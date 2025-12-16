@@ -1,11 +1,11 @@
 const LPNU_API = "https://student.lpnu.ua/students_schedule"
 let currentDate = new Date()
 const currentGroup = window.CURRENT_USER_GROUP
+let currentSubgroup = (typeof window.CURRENT_USER_SUBGROUP !== 'undefined') ? parseInt(window.CURRENT_USER_SUBGROUP, 10) : 1;
+if (!currentSubgroup || (currentSubgroup !== 1 && currentSubgroup !== 2)) currentSubgroup = 1;
 let allEvents = []
 let editingEventId = null
 let editingEventDate = null
-let currentSubgroup = 1
-
 
 function formatDate(d) {
   const year = d.getFullYear()
@@ -25,61 +25,33 @@ async function initCalendar() {
     return
   }
 
-  setupSubgroupListeners()
+  setupSubgroupSwitcher()
+  updateSubgroupUI()
   await fetchSchedule()
   renderCalendar()
   setupEventListeners()
 }
-
-function setupSubgroupListeners() {
-  const buttons = document.querySelectorAll(".subgroup-btn")
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      const subgroup = e.target.dataset.subgroup
-      currentSubgroup = Number.parseInt(subgroup)
-
-
-      buttons.forEach((b) => b.classList.remove("subgroup-active"))
-      e.target.classList.add("subgroup-active")
-
-
-      await fetchSchedule()
-      renderCalendar()
-    })
-  })
-}
-
 
 async function fetchSchedule() {
   try {
     const response = await fetch(`/api/schedule/${currentGroup}?subgroup=${currentSubgroup}`)
     const data = await response.json()
 
-
-    const lpnuEvents = (data.schedule || []).map((e) => ({
-      ...e,
-      is_custom: 0,
-    }))
-    const customEvents = (data.custom_events || []).map((e) => ({
-      ...e,
-      is_custom: 1,
-    }))
-
-    allEvents = [...lpnuEvents, ...customEvents]
+    allEvents = data.events || []
+    console.log("Loaded", allEvents.length, "events")
   } catch (error) {
     console.error("Error fetching schedule:", error)
     allEvents = []
   }
 }
 
-
 function getEventsForDate(dateStr) {
   return allEvents.filter((e) => {
-    const eventDate = e.date || e.event_date
+    const eventStart = e.start || ""
+    const eventDate = eventStart.split("T")[0]
     return eventDate === dateStr
   })
 }
-
 
 function renderCalendar() {
   const monthLabel = document.getElementById("month-label")
@@ -92,20 +64,17 @@ function renderCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const today = formatDate(new Date())
 
-
   const monthName = currentDate.toLocaleString("uk-UA", {
     month: "long",
     year: "numeric",
   })
   monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1)
 
-
   for (let i = 0; i < firstDay; i++) {
     const emptyCell = document.createElement("div")
     emptyCell.className = "calendar-day empty"
     calendar.appendChild(emptyCell)
   }
-
 
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day)
@@ -116,7 +85,6 @@ function renderCalendar() {
     dayCell.className = `calendar-day ${isToday ? "today" : ""}`
     dayCell.dataset.date = dateStr
 
-
     const dayNum = document.createElement("div")
     dayNum.className = "day-number"
     dayNum.textContent = day
@@ -126,17 +94,15 @@ function renderCalendar() {
     eventsContainer.className = "day-events"
 
     const dayEvents = getEventsForDate(dateStr)
-    dayEvents.slice(0, 3).forEach((event) => {
+    dayEvents.sort((a, b) => {
+      const aS = a.start || ""
+      const bS = b.start || ""
+      return aS.localeCompare(bS)
+    })
+    dayEvents.forEach((event) => {
       const eventEl = createEventElement(event, dateStr)
       eventsContainer.appendChild(eventEl)
     })
-
-    if (dayEvents.length > 3) {
-      const moreEl = document.createElement("div")
-      moreEl.className = "day-more"
-      moreEl.textContent = `+${dayEvents.length - 3}`
-      eventsContainer.appendChild(moreEl)
-    }
 
     dayCell.appendChild(eventsContainer)
 
@@ -154,32 +120,48 @@ function renderCalendar() {
 
 function createEventElement(event, dateStr) {
   const el = document.createElement("div")
-  const typeClass = event.type || "other"
-  const isCustom = event.is_custom
+  const typeClass = (event.className && event.className[0]) ? event.className[0] : "event-other"
+  const isCustom = event.extendedProps && event.extendedProps.raw && (parseInt(event.extendedProps.raw.is_custom || 0) === 1)
 
-  el.className = `day-event event-${typeClass} ${isCustom ? "custom" : ""}`
+  el.className = `day-event ${typeClass} ${isCustom ? "custom" : ""}`
   el.dataset.eventId = event.id
 
-  const title = event.title || event.subject || event.name || "Подія"
-  const startTime = event.start_time || event.time_start || ""
+  const title = event.title || "Подія"
+  const startTime = event.start ? (event.start.split("T")[1] || "").substring(0,5) : ""
+  const endTime = event.end ? (event.end.split("T")[1] || "").substring(0,5) : ""
+  const timeRange = startTime ? (startTime + (endTime ? ` - ${endTime}` : "")) : ""
 
-  let displayText = title.substring(0, 15)
-  if (startTime) {
-    displayText += ` ${startTime}`
-  }
+  let displayText = title
+  if (displayText.length > 20) displayText = displayText.substring(0, 20) + "…"
+  if (timeRange) displayText = `${displayText} · ${timeRange}`
+
   el.textContent = displayText
-  el.title = title
+  el.title = `${title}\n${timeRange}`
+
+  el.addEventListener("click", (ev) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    if (isCustom) {
+      openFullModal(dateStr, event)
+    } else {
+    }
+  })
 
   el.addEventListener("contextmenu", (e) => {
     e.preventDefault()
     e.stopPropagation()
     if (isCustom) {
       showContextMenu("event", dateStr, event, e)
+    } else {
+      showContextMenu("hide-all")
+      openViewModal(event)
     }
   })
 
   return el
 }
+
+
 
 function showContextMenu(type, dateStr, event, mouseEvent) {
   const eventMenu = document.getElementById("event-context-menu")
@@ -208,11 +190,21 @@ document.addEventListener("click", () => {
   document.getElementById("empty-context-menu").classList.add("hidden")
 })
 
-
 function closeModal() {
-  document.getElementById("modal").classList.add("hidden")
+  const modal = document.getElementById("modal")
+  const inputs = modal.querySelectorAll("input, select, textarea, button")
+  inputs.forEach(i => {
+    i.removeAttribute("disabled")
+  })
+  const saveBtn = document.getElementById("save-ev")
+  if (saveBtn) saveBtn.style.display = ""
+  const cancelBtn = document.getElementById("cancel-ev")
+  if (cancelBtn) cancelBtn.textContent = "Скасувати"
+
+  modal.classList.add("hidden")
   editingEventId = null
   editingEventDate = null
+  modal.view_mode = false
 }
 
 
@@ -225,13 +217,13 @@ function openFullModal(dateStr, eventData = null) {
   const startInput = document.getElementById("ev-start")
   const endInput = document.getElementById("ev-end")
 
-  if (eventData && eventData.is_custom) {
+  if (eventData && eventData.extendedProps && eventData.extendedProps.raw && eventData.extendedProps.raw.is_custom) {
     title.textContent = "Редагувати подію"
     titleInput.value = eventData.title || ""
-    dateInput.value = eventData.date || dateStr
-    typeInput.value = eventData.type || "other"
-    startInput.value = eventData.start_time || ""
-    endInput.value = eventData.end_time || ""
+    dateInput.value = eventData.start ? eventData.start.split("T")[0] : dateStr
+    typeInput.value = eventData.extendedProps.raw.type || "other"
+    startInput.value = eventData.start ? eventData.start.substring(11, 16) : ""
+    endInput.value = eventData.end ? eventData.end.substring(11, 16) : ""
     editingEventId = eventData.id
   } else {
     title.textContent = "Додати подію"
@@ -268,12 +260,11 @@ function openEditTimeModal() {
   const modal = document.getElementById("modal-edit-time")
   const startInput = document.getElementById("edit-time-start")
   const endInput = document.getElementById("edit-time-end")
-  startInput.value = event.start_time || ""
-  endInput.value = event.end_time || ""
+  startInput.value = event.start ? event.start.substring(11, 16) : ""
+  endInput.value = event.end ? event.end.substring(11, 16) : ""
   modal.classList.remove("hidden")
   startInput.focus()
 }
-
 
 async function saveEvent() {
   const titleInput = document.getElementById("ev-title")
@@ -327,10 +318,10 @@ async function saveEventName() {
     id: editingEventId,
     group_name: currentGroup,
     title: input.value,
-    type: event.type,
-    date: event.date || editingEventDate,
-    start_time: event.start_time,
-    end_time: event.end_time,
+    type: event.extendedProps.raw.type,
+    date: event.start ? event.start.split("T")[0] : editingEventDate,
+    start_time: event.start ? event.start.substring(11, 16) : "",
+    end_time: event.end ? event.end.substring(11, 16) : "",
   }
 
   try {
@@ -360,8 +351,8 @@ async function saveEventTime() {
     id: editingEventId,
     group_name: currentGroup,
     title: event.title,
-    type: event.type,
-    date: event.date || editingEventDate,
+    type: event.extendedProps.raw.type,
+    date: event.start ? event.start.split("T")[0] : editingEventDate,
     start_time: startInput.value,
     end_time: endInput.value,
   }
@@ -401,7 +392,6 @@ async function deleteEvent() {
   }
 }
 
-
 function setupEventListeners() {
   document.getElementById("today-btn").addEventListener("click", () => {
     currentDate = new Date()
@@ -435,7 +425,6 @@ function setupEventListeners() {
 
   document.getElementById("delete-event-btn").addEventListener("click", deleteEvent)
 
-
   document.getElementById("save-ev").addEventListener("click", saveEvent)
   document.getElementById("cancel-ev").addEventListener("click", closeModal)
   document.querySelector(".modal-close").addEventListener("click", closeModal)
@@ -464,8 +453,108 @@ function setupEventListeners() {
   })
 }
 
+function setupSubgroupSwitcher() {
+  const btn1 = document.getElementById("subgroup-btn-1")
+  const btn2 = document.getElementById("subgroup-btn-2")
+
+  btn1.dataset.subgroup = btn1.dataset.subgroup || "1"
+  btn2.dataset.subgroup = btn2.dataset.subgroup || "2"
+
+  function switchHandler(e) {
+    const target = e.currentTarget
+    const sg = parseInt(target.dataset.subgroup, 10) || 1
+    currentSubgroup = sg
+    updateSubgroupUI()
+    saveUserSubgroup(sg).then(() => {
+      fetchSchedule().then(() => renderCalendar())
+    }).catch(() => {
+      fetchSchedule().then(() => renderCalendar())
+    })
+  }
+
+  btn1.removeEventListener('click', btn1.handler)
+  btn2.removeEventListener('click', btn2.handler)
+
+  btn1.handler = switchHandler
+  btn2.handler = switchHandler
+
+  btn1.addEventListener("click", btn1.handler)
+  btn2.addEventListener("click", btn2.handler)
+}
+
+
+function updateSubgroupUI() {
+  const btn1 = document.getElementById("subgroup-btn-1")
+  const btn2 = document.getElementById("subgroup-btn-2")
+
+  if (currentSubgroup === 1) {
+    btn1.classList.add("subgroup-active")
+    btn2.classList.remove("subgroup-active")
+  } else {
+    btn1.classList.remove("subgroup-active")
+    btn2.classList.add("subgroup-active")
+  }
+}
+
+async function saveUserSubgroup(subgroup) {
+  try {
+    const response = await fetch("/api/user/subgroup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subgroup })
+    })
+    if (!response.ok) {
+      console.error("Failed to save subgroup")
+      return false
+    }
+    const data = await response.json()
+    if (data && data.success) {
+      window.CURRENT_USER_SUBGROUP = data.subgroup
+      return true
+    }
+    return false
+  } catch (error) {
+    console.error("Error saving subgroup:", error)
+    return false
+  }
+}
+
+
 if (currentGroup) {
   initCalendar()
 } else {
   console.log("Waiting for group selection...")
+}
+
+
+function openViewModal(event) {
+  const modal = document.getElementById("modal")
+  const title = document.getElementById("modal-title")
+  const titleInput = document.getElementById("ev-title")
+  const dateInput = document.getElementById("ev-date")
+  const typeInput = document.getElementById("ev-type")
+  const startInput = document.getElementById("ev-start")
+  const endInput = document.getElementById("ev-end")
+  const saveBtn = document.getElementById("save-ev")
+  const cancelBtn = document.getElementById("cancel-ev")
+
+  title.textContent = "Інформація про пару"
+  titleInput.value = event.title || ""
+  dateInput.value = event.start ? event.start.split("T")[0] : ""
+  typeInput.value = event.extendedProps && event.extendedProps.type ? event.extendedProps.type : "other"
+  startInput.value = event.start ? event.start.substring(11,16) : ""
+  endInput.value = event.end ? event.end.substring(11,16) : ""
+
+  titleInput.setAttribute("disabled", "disabled")
+  dateInput.setAttribute("disabled", "disabled")
+  typeInput.setAttribute("disabled", "disabled")
+  startInput.setAttribute("disabled", "disabled")
+  endInput.setAttribute("disabled", "disabled")
+
+  saveBtn.style.display = "none"
+  cancelBtn.textContent = "Закрити"
+
+  modal.view_mode = true
+
+  modal.classList.remove("hidden")
 }

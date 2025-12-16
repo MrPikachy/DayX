@@ -15,8 +15,10 @@
   {% endif %}
 
   <form method="post">
+    <label>Група (формат AB-12):
       <input name="group_name" maxlength="5" pattern="[А-Я]{2}-\d{2}" title="Формат: AB-12">
     </label><br>
+    <!-- Removed subgroup selection from profile - now in schedule page -->
     <button type="submit">Змінити</button>
   </form>
 {% endblock %}

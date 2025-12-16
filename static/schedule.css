@@ -142,12 +142,29 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.weekdays-header {
+/* Week header and calendar grid: force exact 7 equal columns so header and cells align */
+.weekdays-header,
+.calendar-grid {
+  width: 100%;
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* use calc(100%/7) to avoid fractional rounding differences between the two grids */
+  grid-template-columns: repeat(7, calc(100% / 7));
+  /* remove implicit gaps — alignment must be pixel-exact */
+  gap: 0;
+}
+
+/* keep header visual styling */
+.weekdays-header {
   background: #f8f9fa;
   border-bottom: 1px solid #dadce0;
 }
+
+/* calendar grid rows: keep auto height (cells control their own height) */
+.calendar-grid {
+  grid-auto-rows: minmax(120px, auto);
+}
+
 
 .weekday {
   padding: 12px;
@@ -157,20 +174,19 @@
   color: #3c4043;
 }
 
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-}
+
 
 .calendar-day {
   border: 1px solid #dadce0;
   border-top: none;
   border-left: none;
   padding: 8px;
-  min-height: 120px;
+  min-height: 200px;
   background: white;
   position: relative;
   transition: background 0.1s;
+  display: flex;
+  flex-direction: column;
 }
 
 .calendar-day:nth-child(7n) {
@@ -199,6 +215,7 @@
   font-size: 14px;
   color: #3c4043;
   margin-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .calendar-day.today .day-number {
@@ -217,6 +234,26 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.day-events::-webkit-scrollbar {
+  width: 4px;
+}
+
+.day-events::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.day-events::-webkit-scrollbar-thumb {
+  background: #dadce0;
+  border-radius: 2px;
+}
+
+.day-events::-webkit-scrollbar-thumb:hover {
+  background: #b0bec5;
 }
 
 .day-event {
@@ -228,6 +265,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 
 .day-event:hover {
@@ -241,15 +279,15 @@
 }
 
 .event-practical {
-  background: #f3e5f5;
-  color: #4a148c;
-  border-left: 2px solid #9c27b0;
+  background: #ffcdd2;
+  color: #b71c1c;
+  border-left: 2px solid #f44336;
 }
 
 .event-lab {
-  background: #e8f5e9;
-  color: #1b5e20;
-  border-left: 2px solid #4caf50;
+  background: #e1bee7;
+  color: #4a148c;
+  border-left: 2px solid #9c27b0;
 }
 
 .event-deadline {

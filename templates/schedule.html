@@ -7,12 +7,15 @@
   <header class="schedule-header">
     <div class="header-left">
       <h1>Розклад</h1>
-      <span class="group-display" id="group-display">Група: {{ current_user_group or 'Не встановлено' }}</span>
-      <!-- Added subgroup switcher buttons -->
-      <div class="subgroup-switcher" id="subgroup-switcher">
-        <button class="subgroup-btn subgroup-active" data-subgroup="1">Підгрупа 1</button>
-        <span class="subgroup-separator">|</span>
-        <button class="subgroup-btn" data-subgroup="2">Підгрупа 2</button>
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <span class="group-display" id="group-display">Група: {{ current_user_group or 'Не встановлено' }}</span>
+        <!-- Added subgroup switcher buttons in schedule header -->
+        <div class="subgroup-switcher">
+            <label style="font-size: 13px; color: #666; margin-right: 8px;">Підгрупа:</label>
+            <button id="subgroup-btn-1" class="subgroup-btn subgroup-active" data-subgroup="1">Підгрупа 1</button>
+            <span class="subgroup-separator">|</span>
+            <button id="subgroup-btn-2" class="subgroup-btn" data-subgroup="2">Підгрупа 2</button>
+        </div>
       </div>
     </div>
     <div class="header-controls">
@@ -56,7 +59,7 @@
   <button class="context-menu-item" id="add-event-btn">Додати подію</button>
 </div>
 
-<!-- Modal for adding/editing events -->
+<!-- ... existing modals ... -->
 <div id="modal" class="modal hidden">
   <div class="modal-overlay"></div>
   <div class="modal-content">
@@ -105,7 +108,6 @@
   </div>
 </div>
 
-<!-- Modal for quick edit name -->
 <div id="modal-edit-name" class="modal hidden">
   <div class="modal-overlay"></div>
   <div class="modal-content modal-small">
@@ -126,7 +128,6 @@
   </div>
 </div>
 
-<!-- Modal for quick edit time -->
 <div id="modal-edit-time" class="modal hidden">
   <div class="modal-overlay"></div>
   <div class="modal-content modal-small">
@@ -153,6 +154,10 @@
   </div>
 </div>
 
-<script>window.CURRENT_USER_GROUP = "{{ current_user_group or '' }}";</script>
+<!-- Pass subgroup to JavaScript from user data -->
+<script>
+  window.CURRENT_USER_GROUP = "{{ current_user_group or '' }}";
+  window.CURRENT_USER_SUBGROUP = {{ current_user_subgroup or 1 }};
+</script>
 <script src="{{ url_for('static', filename='schedule.js') }}"></script>
 {% endblock %}
