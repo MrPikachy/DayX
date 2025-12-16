@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="team-chat-container">
+  <div class="team-chat-header">
+    <div class="team-header-left">
+      <h1>{{ team['name'] }}</h1>
+    </div>
+    <div class="team-header-right">
+      <button id="members-btn" class="chat-btn">Склад команди</button>
+      {% if is_creator %}
+        <button id="rename-btn" class="chat-btn">Змінити назву</button>
+        <button id="add-member-btn" class="chat-btn">Запросити користувача</button>
+        <button id="disband-btn" class="chat-btn chat-btn-danger">Розпустити команду</button>
+      {% else %}
+        <button id="leave-btn" class="chat-btn chat-btn-danger">Покинути команду</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="team-messages" id="messages-container">
+    {% for message in messages %}
+      <div class="message">
+        <div class="message-author">{{ message['first_name'] }} {{ message['last_name'] }}</div>
+        <div class="message-text">{{ message['message'] }}</div>
+        <div class="message-time">{{ message['created_at'][:19] }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="team-input-area">
+    <input id="message-input" type="text" class="message-input" placeholder="Введіть повідомлення...">
+    <button id="send-btn" class="btn btn-primary">Надіслати</button>
+  </div>
+</div>
+
+<!-- Members modal -->
+<div id="modal-members" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content">
+    <button class="modal-close">&times;</button>
+    <h2>Склад команди</h2>
+    <div id="members-list" class="members-list">
+      {% for member in members %}
+        <div class="member-item">
+          <span>{{ member['first_name'] }} {{ member['last_name'] }}</span>
+          {% if is_creator and member['id'] != team['creator_id'] %}
+            <button class="btn-remove-member" data-member-id="{{ member['id'] }}">Вигнати</button>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div class="modal-actions">
+      <button id="close-members" class="btn btn-secondary">Закрити</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename modal -->
+<div id="modal-rename" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content">
+    <button class="modal-close">&times;</button>
+    <h2>Змінити назву команди</h2>
+    <div class="form-group">
+      <input id="new-team-name" type="text" class="form-input" value="{{ team['name'] }}">
+    </div>
+    <div class="modal-actions">
+      <div class="modal-right-buttons">
+        <button id="cancel-rename" class="btn btn-secondary">Скасувати</button>
+        <button id="save-rename" class="btn btn-primary">Зберегти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add member modal -->
+<div id="modal-add-member" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content">
+    <button class="modal-close">&times;</button>
+    <h2>Запросити користувача</h2>
+    <div class="form-group">
+      <label for="add-member-email">Email користувача</label>
+      <input id="add-member-email" type="email" class="form-input" placeholder="user@example.com">
+    </div>
+    <div id="add-member-error" class="error-message" style="display: none;"></div>
+    <div class="modal-actions">
+      <div class="modal-right-buttons">
+        <button id="cancel-add-member" class="btn btn-secondary">Скасувати</button>
+        <button id="confirm-add-member" class="btn btn-primary">Запросити</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .team-chat-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    height: calc(100vh - 100px);
+    display: flex;
+    flex-direction: column;
+    background: white;
+  }
+
+  .team-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #dadce0;
+  }
+
+  .team-header-right {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .chat-btn {
+    padding: 8px 16px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    background: #f8f9fa;
+    color: #3c4043;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .chat-btn:hover {
+    background: #f1f3f4;
+  }
+
+  .chat-btn-danger {
+    background: #ffebee;
+    color: #c5221f;
+    border-color: #ffcdd2;
+  }
+
+  .chat-btn-danger:hover {
+    background: #f8d7da;
+  }
+
+  .team-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .message {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    border-left: 3px solid #1f71e8;
+  }
+
+  .message-author {
+    font-weight: 600;
+    color: #3c4043;
+    font-size: 13px;
+  }
+
+  .message-text {
+    margin-top: 4px;
+    color: #3c4043;
+    word-wrap: break-word;
+  }
+
+  .message-time {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+  }
+
+  .team-input-area {
+    display: flex;
+    gap: 8px;
+    padding: 20px;
+    border-top: 1px solid #dadce0;
+  }
+
+  .message-input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+
+  .message-input:focus {
+    outline: none;
+    border-color: #1f71e8;
+    box-shadow: 0 0 0 3px rgba(31, 113, 232, 0.1);
+  }
+
+  .members-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+  }
+
+  .member-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .btn-remove-member {
+    padding: 6px 12px;
+    background: #ffebee;
+    color: #c5221f;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .btn-remove-member:hover {
+    background: #f8d7da;
+  }
+
+  .error-message {
+    color: #c5221f;
+    background: #ffebee;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .modal.hidden {
+    display: none;
+  }
+
+  .modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-content {
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    padding: 32px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #5f6368;
+    cursor: pointer;
+  }
+
+  .modal-content h2 {
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .btn-primary {
+    background: #1f71e8;
+    color: white;
+  }
+
+  .btn-secondary {
+    background: #f8f9fa;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+  }
+</style>
+
+<script src="{{ url_for('static', filename='teams.js') }}"></script>
+{% endblock %}

@@ -7,6 +7,7 @@ let allEvents = []
 let editingEventId = null
 let editingEventDate = null
 
+// Format date as YYYY-MM-DD
 function formatDate(d) {
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, "0")
@@ -14,11 +15,13 @@ function formatDate(d) {
   return `${year}-${month}-${day}`
 }
 
+// Get first day of month (Monday = 0)
 function getFirstDayOfMonth(d) {
   const first = new Date(d.getFullYear(), d.getMonth(), 1)
   return (first.getDay() + 6) % 7
 }
 
+// Initialize calendar
 async function initCalendar() {
   if (!currentGroup) {
     console.log("No group selected")
@@ -37,10 +40,11 @@ async function fetchSchedule() {
     const response = await fetch(`/api/schedule/${currentGroup}?subgroup=${currentSubgroup}`)
     const data = await response.json()
 
+    // Use events from API directly (already formatted for calendar)
     allEvents = data.events || []
-    console.log("Loaded", allEvents.length, "events")
+    console.log("[v0] Loaded", allEvents.length, "events")
   } catch (error) {
-    console.error("Error fetching schedule:", error)
+    console.error("[v0] Error fetching schedule:", error)
     allEvents = []
   }
 }
@@ -48,11 +52,13 @@ async function fetchSchedule() {
 function getEventsForDate(dateStr) {
   return allEvents.filter((e) => {
     const eventStart = e.start || ""
+    // Extract date from ISO format (YYYY-MM-DDTHH:MM:SS)
     const eventDate = eventStart.split("T")[0]
     return eventDate === dateStr
   })
 }
 
+// Render month calendar
 function renderCalendar() {
   const monthLabel = document.getElementById("month-label")
   const calendar = document.getElementById("calendar")
@@ -64,18 +70,21 @@ function renderCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const today = formatDate(new Date())
 
+  // Update month label
   const monthName = currentDate.toLocaleString("uk-UA", {
     month: "long",
     year: "numeric",
   })
   monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1)
 
+  // Create empty cells for days before month starts
   for (let i = 0; i < firstDay; i++) {
     const emptyCell = document.createElement("div")
     emptyCell.className = "calendar-day empty"
     calendar.appendChild(emptyCell)
   }
 
+  // Create cells for each day of month
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day)
     const dateStr = formatDate(date)
@@ -85,11 +94,13 @@ function renderCalendar() {
     dayCell.className = `calendar-day ${isToday ? "today" : ""}`
     dayCell.dataset.date = dateStr
 
+    // Day number
     const dayNum = document.createElement("div")
     dayNum.className = "day-number"
     dayNum.textContent = day
     dayCell.appendChild(dayNum)
 
+    // Events container
     const eventsContainer = document.createElement("div")
     eventsContainer.className = "day-events"
 
@@ -118,6 +129,7 @@ function renderCalendar() {
   }
 }
 
+// Create event element
 function createEventElement(event, dateStr) {
   const el = document.createElement("div")
   const typeClass = (event.className && event.className[0]) ? event.className[0] : "event-other"
@@ -138,22 +150,27 @@ function createEventElement(event, dateStr) {
   el.textContent = displayText
   el.title = `${title}\n${timeRange}`
 
+  // Ліва кнопка: тільки для власних подій відкриває редагування
   el.addEventListener("click", (ev) => {
     ev.preventDefault()
     ev.stopPropagation()
     if (isCustom) {
-      openFullModal(dateStr, event)
+      openFullModal(dateStr, event) // редагування власної події
     } else {
+      // можна показати легкий tooltip або нічого — тут нічого
     }
   })
 
+  // ПКМ (right click)
   el.addEventListener("contextmenu", (e) => {
     e.preventDefault()
     e.stopPropagation()
     if (isCustom) {
+      // контекстне меню для власної події (редагування/видалення)
       showContextMenu("event", dateStr, event, e)
     } else {
-      showContextMenu("hide-all")
+      // для пар з розкладу відкриваємо view-only інформаційне вікно
+      showContextMenu("hide-all") // сховати інші меню
       openViewModal(event)
     }
   })
@@ -167,6 +184,7 @@ function showContextMenu(type, dateStr, event, mouseEvent) {
   const eventMenu = document.getElementById("event-context-menu")
   const emptyMenu = document.getElementById("empty-context-menu")
 
+  // Hide both menus first
   eventMenu.classList.add("hidden")
   emptyMenu.classList.add("hidden")
 
@@ -190,12 +208,15 @@ document.addEventListener("click", () => {
   document.getElementById("empty-context-menu").classList.add("hidden")
 })
 
+// Close modal
 function closeModal() {
   const modal = document.getElementById("modal")
+  // відновимо поля editable якщо були readonly
   const inputs = modal.querySelectorAll("input, select, textarea, button")
   inputs.forEach(i => {
     i.removeAttribute("disabled")
   })
+  // відновимо save btn та cancel btn text
   const saveBtn = document.getElementById("save-ev")
   if (saveBtn) saveBtn.style.display = ""
   const cancelBtn = document.getElementById("cancel-ev")
@@ -204,10 +225,11 @@ function closeModal() {
   modal.classList.add("hidden")
   editingEventId = null
   editingEventDate = null
-  modal.view_mode = false
+  modal._v0_view_mode = false
 }
 
 
+// Open full event modal
 function openFullModal(dateStr, eventData = null) {
   const modal = document.getElementById("modal")
   const title = document.getElementById("modal-title")
@@ -266,6 +288,7 @@ function openEditTimeModal() {
   startInput.focus()
 }
 
+// Save event
 async function saveEvent() {
   const titleInput = document.getElementById("ev-title")
   const dateInput = document.getElementById("ev-date")
@@ -374,6 +397,7 @@ async function saveEventTime() {
   }
 }
 
+// Delete event
 async function deleteEvent() {
   if (!editingEventId || !confirm("Ви впевнені?")) return
 
@@ -392,6 +416,7 @@ async function deleteEvent() {
   }
 }
 
+// Setup event listeners
 function setupEventListeners() {
   document.getElementById("today-btn").addEventListener("click", () => {
     currentDate = new Date()
@@ -425,6 +450,7 @@ function setupEventListeners() {
 
   document.getElementById("delete-event-btn").addEventListener("click", deleteEvent)
 
+  // Modal handlers
   document.getElementById("save-ev").addEventListener("click", saveEvent)
   document.getElementById("cancel-ev").addEventListener("click", closeModal)
   document.querySelector(".modal-close").addEventListener("click", closeModal)
@@ -457,29 +483,34 @@ function setupSubgroupSwitcher() {
   const btn1 = document.getElementById("subgroup-btn-1")
   const btn2 = document.getElementById("subgroup-btn-2")
 
+  // встановимо data-subgroup якщо нема
   btn1.dataset.subgroup = btn1.dataset.subgroup || "1"
   btn2.dataset.subgroup = btn2.dataset.subgroup || "2"
 
+  // загальний handler, використовує data-subgroup
   function switchHandler(e) {
     const target = e.currentTarget
     const sg = parseInt(target.dataset.subgroup, 10) || 1
     currentSubgroup = sg
     updateSubgroupUI()
+    // збереження в бекенд
     saveUserSubgroup(sg).then(() => {
+      // оновимо події після успішного збереження
       fetchSchedule().then(() => renderCalendar())
     }).catch(() => {
+      // навіть якщо не вдалось зберегти — оновимо UI
       fetchSchedule().then(() => renderCalendar())
     })
   }
 
-  btn1.removeEventListener('click', btn1.handler)
-  btn2.removeEventListener('click', btn2.handler)
+  btn1.removeEventListener('click', btn1._v0_handler)
+  btn2.removeEventListener('click', btn2._v0_handler)
 
-  btn1.handler = switchHandler
-  btn2.handler = switchHandler
+  btn1._v0_handler = switchHandler
+  btn2._v0_handler = switchHandler
 
-  btn1.addEventListener("click", btn1.handler)
-  btn2.addEventListener("click", btn2.handler)
+  btn1.addEventListener("click", btn1._v0_handler)
+  btn2.addEventListener("click", btn2._v0_handler)
 }
 
 
@@ -504,22 +535,24 @@ async function saveUserSubgroup(subgroup) {
       body: JSON.stringify({ subgroup })
     })
     if (!response.ok) {
-      console.error("Failed to save subgroup")
+      console.error("[v0] Failed to save subgroup")
       return false
     }
     const data = await response.json()
     if (data && data.success) {
+      // оновимо локальне значення
       window.CURRENT_USER_SUBGROUP = data.subgroup
       return true
     }
     return false
   } catch (error) {
-    console.error("Error saving subgroup:", error)
+    console.error("[v0] Error saving subgroup:", error)
     return false
   }
 }
 
 
+// Initialize on load
 if (currentGroup) {
   initCalendar()
 } else {
@@ -527,7 +560,10 @@ if (currentGroup) {
 }
 
 
+// Показати view-only модал для пар розкладу
 function openViewModal(event) {
+  // Створимо простий modal на льоту або використаємо існуючий #modal але в режимі readonly
+  // Ми будемо використати #modal як view-only: сховаємо кнопки збереження
   const modal = document.getElementById("modal")
   const title = document.getElementById("modal-title")
   const titleInput = document.getElementById("ev-title")
@@ -538,6 +574,7 @@ function openViewModal(event) {
   const saveBtn = document.getElementById("save-ev")
   const cancelBtn = document.getElementById("cancel-ev")
 
+  // Заповнимо значення
   title.textContent = "Інформація про пару"
   titleInput.value = event.title || ""
   dateInput.value = event.start ? event.start.split("T")[0] : ""
@@ -545,16 +582,19 @@ function openViewModal(event) {
   startInput.value = event.start ? event.start.substring(11,16) : ""
   endInput.value = event.end ? event.end.substring(11,16) : ""
 
+  // Робимо поля readonly / disabled
   titleInput.setAttribute("disabled", "disabled")
   dateInput.setAttribute("disabled", "disabled")
   typeInput.setAttribute("disabled", "disabled")
   startInput.setAttribute("disabled", "disabled")
   endInput.setAttribute("disabled", "disabled")
 
+  // Приховати кнопку збереження (щоб не можна було змінити)
   saveBtn.style.display = "none"
   cancelBtn.textContent = "Закрити"
 
-  modal.view_mode = true
+  // Збережемо стан щоб відновити при закритті
+  modal._v0_view_mode = true
 
   modal.classList.remove("hidden")
 }

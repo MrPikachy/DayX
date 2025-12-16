@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, date
 import requests
 from bs4 import BeautifulSoup
 import re
+from functools import wraps
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'app.db')
@@ -68,6 +69,43 @@ def init_db():
                         data TEXT NOT NULL,
                         cached_at TEXT NOT NULL
                     )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS teams (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        creator_id INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (creator_id) REFERENCES users(id)
+                    )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS team_members (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        team_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        joined_at TEXT NOT NULL,
+                        UNIQUE(team_id, user_id),
+                        FOREIGN KEY (team_id) REFERENCES teams(id),
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS team_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        team_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        message TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (team_id) REFERENCES teams(id),
+                        FOREIGN KEY (user_id) REFERENCES users(id)
+                    )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS notifications (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        recipient_id INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        related_id INTEGER,
+                        is_read INTEGER DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (recipient_id) REFERENCES users(id)
+                    )''')
+
         db.commit()
 
 
@@ -178,30 +216,21 @@ def profile():
 
     return render_template('profile.html', user=user)
 
+
 @app.route('/api/user/subgroup', methods=['POST'])
-def api_user_subgroup():
+def save_user_subgroup():
     if not g.user:
         return jsonify({'error': 'Not authenticated'}), 401
-    try:
-        if request.is_json:
-            data = request.get_json()
-            subgroup = int(data.get('subgroup', 1))
-        else:
-            subgroup = int(request.form.get('subgroup', request.args.get('subgroup', 1)))
-    except:
-        subgroup = 1
 
+    subgroup = request.form.get('subgroup', '1')
     db = get_db()
-    try:
-        db.execute('UPDATE users SET subgroup = ? WHERE id = ?', (subgroup, g.user['id']))
-        db.commit()
-        session['subgroup'] = subgroup
-        return jsonify({'success': True, 'subgroup': subgroup})
-    except Exception as e:
-        print(f"Error saving subgroup: {e}")
-        return jsonify({'error': 'db_error'}), 500
+    db.execute('UPDATE users SET subgroup = ? WHERE id = ?', (int(subgroup), g.user['id']))
+    db.commit()
+    return jsonify({'success': True})
+
 
 def detect_subgroup(block_text):
+    """Detect which subgroup a class block belongs to (1 or 2, or 0 if no marker)"""
     t = block_text.lower()
     if re.search(r'\b(підгр[^0-9]*1|\b1\s*підгр|\bпідгр\.?\s*1|$$1$$|\b1\/?підгр)\b', t):
         return 1
@@ -216,6 +245,7 @@ def detect_subgroup(block_text):
 
 
 def detect_week_type(block_text):
+    """Detect week type: 'чисельник', 'знаменник' or None"""
     t = block_text.lower()
     if 'чисел' in t or 'чис.' in t:
         return 'чисельник'
@@ -225,6 +255,10 @@ def detect_week_type(block_text):
 
 
 def parse_html_schedule(html_text):
+    """
+    Parse HTML schedule from LPNU and extract all classes.
+    Returns list of dicts with: weekday, start_time, end_time, subject, subject_type, location, subgroup, week_type
+    """
     soup = BeautifulSoup(html_text, 'html.parser')
     schedule = []
 
@@ -233,17 +267,21 @@ def parse_html_schedule(html_text):
     if schedule_items:
         for item in schedule_items:
             try:
+                # Extract weekday
                 weekday_el = item.find('div', {'class': 'day'})
                 weekday = weekday_el.get_text(strip=True) if weekday_el else ''
 
+                # Extract time
                 time_el = item.find('div', {'class': 'time'})
                 time_text = time_el.get_text(strip=True) if time_el else ''
                 start_time = time_text.split('-')[0].strip() if '-' in time_text else time_text
                 end_time = time_text.split('-')[1].strip() if '-' in time_text else ''
 
+                # Extract subject
                 subject_el = item.find('div', {'class': 'subject'})
                 subject = subject_el.get_text(strip=True) if subject_el else ''
 
+                # Extract type
                 type_el = item.find('div', {'class': 'type'})
                 type_text = type_el.get_text(strip=True) if type_el else ''
 
@@ -255,9 +293,11 @@ def parse_html_schedule(html_text):
                 elif 'лаб' in type_text.lower():
                     subject_type = 'Лабораторна'
 
+                # Extract location
                 location_el = item.find('div', {'class': 'location'})
                 location = location_el.get_text(strip=True) if location_el else ''
 
+                # Check for subgroup markers
                 full_text = item.get_text(strip=True).lower()
                 subgroup = 0
                 if 'підгр' in full_text:
@@ -266,6 +306,7 @@ def parse_html_schedule(html_text):
                     elif '2' in full_text[:full_text.find('підгр') + 10]:
                         subgroup = 2
 
+                # Check for week type
                 week_type = 'обидва'
                 if 'чисел' in full_text:
                     week_type = 'чисельник'
@@ -275,6 +316,7 @@ def parse_html_schedule(html_text):
                 if not subject:
                     continue
 
+                # Create entry for each applicable subgroup
                 for sub in ([subgroup] if subgroup > 0 else [1, 2]):
                     schedule.append({
                         'weekday': weekday,
@@ -287,11 +329,11 @@ def parse_html_schedule(html_text):
                         'week_type': week_type
                     })
             except Exception as e:
-                print(f"Error parsing schedule item: {e}")
+                print(f"[v0] Error parsing schedule item: {e}")
                 continue
 
     if not schedule:
-        print("No scheduleitem divs found, trying table parsing")
+        print("[v0] No scheduleitem divs found, trying table parsing")
         table = soup.find('table')
         if table:
             rows = table.find_all('tr')
@@ -355,7 +397,7 @@ def parse_html_schedule(html_text):
                                     'week_type': 'обидва'
                                 })
 
-    print(f"Parsed {len(schedule)} schedule items")
+    print(f"[v0] Parsed {len(schedule)} schedule items")
     return schedule
 
 
@@ -375,14 +417,17 @@ def fetch_and_cache_schedule(group_name):
         if response.status_code != 200:
             return False
 
+        # Parse the HTML
         schedule_rows = parse_html_schedule(response.text)
 
         if not schedule_rows:
             return False
 
+        # Clear old schedule for this group
         db = get_db()
         db.execute('DELETE FROM schedule WHERE group_name = ?', (group_name,))
 
+        # Insert new schedule
         now = datetime.now().isoformat()
         for row in schedule_rows:
             db.execute('''INSERT INTO schedule 
@@ -399,17 +444,26 @@ def fetch_and_cache_schedule(group_name):
 
 
 def get_current_week_type():
+    """Determine if it's чисельник or знаменник week"""
+    # Simplified: use date to determine week type
+    # Week 1 of semester = чисельник, Week 2 = знаменник, etc.
+    # You may need to adjust based on actual semester start date
     week_num = datetime.now().isocalendar()[1]
     return 'чисельник' if week_num % 2 == 1 else 'знаменник'
 
 
 def fetch_lpnu_schedule(group_name, subgroup=1):
+    """
+    Fetch schedule from database for a specific group and subgroup.
+    """
     try:
         db = get_db()
 
+        # Check if we have cached data
         cached = db.execute('SELECT cached_at FROM schedule WHERE group_name = ? LIMIT 1',
                             (group_name,)).fetchone()
 
+        # If no cache or cache is older than 24 hours, fetch fresh data
         if not cached:
             fetch_and_cache_schedule(group_name)
         else:
@@ -417,6 +471,7 @@ def fetch_lpnu_schedule(group_name, subgroup=1):
             if (datetime.now() - cached_time).total_seconds() > 86400:  # 24 hours
                 fetch_and_cache_schedule(group_name)
 
+        # Get schedule for subgroup
         week_type = get_current_week_type()
         rows = db.execute('''SELECT * FROM schedule 
                             WHERE group_name = ? AND subgroup = ? AND week_type IN (?, 'обидва')
@@ -425,11 +480,13 @@ def fetch_lpnu_schedule(group_name, subgroup=1):
 
         events = []
         for row in rows:
+            # Map weekday names to weekday numbers
             weekday_map = {
                 'Понеділок': 0, 'Вівторок': 1, 'Середа': 2, 'Четвер': 3,
                 "П'ятниця": 4, 'Субота': 5, 'Неділя': 6
             }
 
+            # Find next occurrence of this weekday
             today = datetime.now()
             weekday_num = weekday_map.get(row['weekday'], 0)
             days_ahead = weekday_num - today.weekday()
@@ -456,59 +513,13 @@ def fetch_lpnu_schedule(group_name, subgroup=1):
         print(f"Error fetching schedule: {e}")
         return []
 
-def week_parity_for_date(date_obj, sem_start):
-    days_since_start = (date_obj - sem_start).days
-    week_num = (days_since_start // 7) + 1
-    return 'знаменник' if week_num % 2 == 1 else 'чисельник'
-
-
-def expand_template_rows_to_dates(schedule_data, sem_start, sem_end, first_week='знаменник'):
-    weekday_map = {
-        'Понеділок': 0, 'Пн': 0,
-        'Вівторок': 1, 'Вт': 1,
-        'Середа': 2, 'Ср': 2,
-        'Четвер': 3, 'Чт': 3,
-        "П'ятниця": 4, 'Пт': 4,
-        'Субота': 5, 'Сб': 5,
-        'Неділя': 6, 'Нд': 6
-    }
-
-    expanded = []
-    current_date = sem_start
-
-    while current_date <= sem_end:
-        weekday_num = current_date.weekday()
-        current_parity = week_parity_for_date(current_date, sem_start)
-
-        for row in schedule_data:
-            template_weekday = row.get('weekday', '').strip()
-            template_parity = row.get('week_type', 'обидва')
-
-            found_weekday = False
-            for uk_name, num in weekday_map.items():
-                if uk_name.lower() in template_weekday.lower():
-                    found_weekday = (num == weekday_num)
-                    break
-
-            if not found_weekday:
-                continue
-
-            if template_parity != 'обидва' and template_parity != current_parity:
-                continue
-
-            expanded_row = dict(row)
-            expanded_row['date'] = current_date.isoformat()
-            expanded.append(expanded_row)
-
-        current_date += timedelta(days=1)
-
-    return expanded
 
 @app.route('/api/schedule/<group_name>')
 def get_schedule(group_name):
     if not g.user:
         return jsonify({'error': 'Not authenticated'}), 401
 
+    # Get subgroup from query params or user profile
     req_sub = int(request.args.get('subgroup', '0'))
     if req_sub == 0:
         db = get_db()
@@ -518,20 +529,26 @@ def get_schedule(group_name):
     try:
         db = get_db()
 
+        # Fetch all raw schedule rows for this group
         raw_rows = db.execute('''SELECT * FROM schedule WHERE group_name = ?''',
                               (group_name,)).fetchall()
 
+        # Convert to list of dicts
         schedule_data = [dict(row) for row in raw_rows]
 
+        # Determine current semester dates
         today = date.today()
         sem1_year = today.year if today.month >= 9 else today.year - 1
         sem1_start = date(sem1_year, 9, 1)
         sem1_end = date(sem1_year, 12, 20)
 
+        # Expand template rows to concrete dates
         expanded = expand_template_rows_to_dates(schedule_data, sem1_start, sem1_end)
 
+        # Filter by subgroup: include if subgroup==0 (for all) or subgroup matches request
         filtered_rows = [row for row in expanded if row.get('subgroup', 0) == 0 or row.get('subgroup', 0) == req_sub]
 
+        # Format as FullCalendar events
         events = []
         for idx, row in enumerate(filtered_rows):
             event_date = row.get('date', '')
@@ -567,6 +584,7 @@ def get_schedule(group_name):
                     'className': class_name
                 })
 
+        # Fetch custom user events
         custom_events_rows = db.execute('SELECT * FROM events WHERE user_id = ? AND group_name = ?',
                                         (g.user['id'], group_name)).fetchall()
 
@@ -600,7 +618,7 @@ def get_schedule(group_name):
         })
 
     except Exception as e:
-        print(f"Error in get_schedule: {e}")
+        print(f"[v0] Error in get_schedule: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e), 'events': [], 'schedule': [], 'custom_events': []}), 500
@@ -615,48 +633,29 @@ def save_event():
     db = get_db()
 
     if data.get('id'):
-        incoming_id = data['id']
-        try:
-            if isinstance(incoming_id, str) and incoming_id.startswith('custom_'):
-                event_id = int(incoming_id.split('_', 1)[1])
-            else:
-                event_id = int(incoming_id)
-        except Exception:
-            return jsonify({'error': 'invalid_id'}), 400
-
-        db.execute(
-            'UPDATE events SET title = ?, type = ?, date = ?, start_time = ?, end_time = ? WHERE id = ? AND user_id = ?',
-            (data['title'], data['type'], data.get('date'), data['start_time'], data.get('end_time'), event_id, g.user['id'])
-        )
+        # Update existing event
+        db.execute('UPDATE events SET title = ?, type = ?, start_time = ?, end_time = ? WHERE id = ? AND user_id = ?',
+                   (data['title'], data['type'], data['start_time'], data.get('end_time'), data['id'], g.user['id']))
     else:
+        # Create new event
         db.execute(
             'INSERT INTO events (user_id, group_name, title, type, date, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)',
             (g.user['id'], data['group_name'], data['title'], data['type'], data['date'], data['start_time'],
-             data.get('end_time'))
-        )
+             data.get('end_time')))
 
     db.commit()
     return jsonify({'success': True})
 
 
-@app.route('/api/event/<event_id>', methods=['DELETE'])
+@app.route('/api/event/<int:event_id>', methods=['DELETE'])
 def delete_event(event_id):
     if not g.user:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    try:
-        if isinstance(event_id, str) and event_id.startswith('custom_'):
-            eid = int(event_id.split('_', 1)[1])
-        else:
-            eid = int(event_id)
-    except Exception:
-        return jsonify({'error': 'invalid_id'}), 400
-
     db = get_db()
-    db.execute('DELETE FROM events WHERE id = ? AND user_id = ?', (eid, g.user['id']))
+    db.execute('DELETE FROM events WHERE id = ? AND user_id = ?', (event_id, g.user['id']))
     db.commit()
     return jsonify({'success': True})
-
 
 
 @app.route('/schedule')
@@ -679,9 +678,429 @@ def groups():
     return render_template('groups.html')
 
 
+@app.route('/teams')
+def teams():
+    if g.user is None:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    # Get all teams where user is a member
+    user_teams = db.execute('''
+        SELECT t.* FROM teams t
+        JOIN team_members tm ON t.id = tm.team_id
+        WHERE tm.user_id = ?
+        ORDER BY t.created_at DESC
+    ''', (g.user['id'],)).fetchall()
+
+    return render_template('teams.html', teams=user_teams)
+
+
+@app.route('/api/teams', methods=['POST'])
+def create_team():
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.get_json()
+    team_name = data.get('name', '').strip()
+
+    if not team_name or len(team_name) > 100:
+        return jsonify({'error': 'Invalid team name'}), 400
+
+    try:
+        db = get_db()
+        now = datetime.now().isoformat()
+
+        cursor = db.execute('''INSERT INTO teams (name, creator_id, created_at)
+                             VALUES (?, ?, ?)''',
+                            (team_name, g.user['id'], now))
+        team_id = cursor.lastrowid
+
+        # Add creator as member
+        db.execute('''INSERT INTO team_members (team_id, user_id, joined_at)
+                     VALUES (?, ?, ?)''',
+                   (team_id, g.user['id'], now))
+
+        db.commit()
+        return jsonify({'success': True, 'team_id': team_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/team/<int:team_id>')
+def team_chat(team_id):
+    if g.user is None:
+        return redirect(url_for('login'))
+
+    db = get_db()
+
+    # Check if user is member of team
+    member = db.execute('''
+        SELECT * FROM team_members
+        WHERE team_id = ? AND user_id = ?
+    ''', (team_id, g.user['id'])).fetchone()
+
+    if not member:
+        flash('Ви не маєте доступу до цієї команди', 'error')
+        return redirect(url_for('teams'))
+
+    team = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+    is_creator = team['creator_id'] == g.user['id']
+
+    # Get team members
+    members = db.execute('''
+        SELECT u.id, u.first_name, u.last_name FROM team_members tm
+        JOIN users u ON tm.user_id = u.id
+        WHERE tm.team_id = ?
+        ORDER BY u.first_name
+    ''', (team_id,)).fetchall()
+
+    # Get messages
+    messages = db.execute('''
+        SELECT m.*, u.first_name, u.last_name FROM team_messages m
+        JOIN users u ON m.user_id = u.id
+        WHERE m.team_id = ?
+        ORDER BY m.created_at ASC
+    ''', (team_id,)).fetchall()
+
+    return render_template('team-chat.html', team=team, is_creator=is_creator,
+                           members=members, messages=messages)
+
+
+@app.route('/api/team/<int:team_id>/message', methods=['POST'])
+def send_team_message(team_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+
+    # Check membership
+    member = db.execute('''
+        SELECT * FROM team_members
+        WHERE team_id = ? AND user_id = ?
+    ''', (team_id, g.user['id'])).fetchone()
+
+    if not member:
+        return jsonify({'error': 'Not a member'}), 403
+
+    data = request.get_json()
+    message = data.get('message', '').strip()
+
+    if not message or len(message) > 5000:
+        return jsonify({'error': 'Invalid message'}), 400
+
+    try:
+        now = datetime.now().isoformat()
+        db.execute('''INSERT INTO team_messages (team_id, user_id, message, created_at)
+                     VALUES (?, ?, ?, ?)''',
+                   (team_id, g.user['id'], message, now))
+
+        team = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+        team_members = db.execute('''
+            SELECT user_id FROM team_members WHERE team_id = ? AND user_id != ?
+        ''', (team_id, g.user['id'])).fetchall()
+
+        for member_row in team_members:
+            recipient_id = member_row['user_id']
+            db.execute('''
+                INSERT INTO notifications (recipient_id, type, title, message, related_id, created_at)
+                VALUES (?, 'team_message', ?, ?, ?, ?)
+            ''', (recipient_id,
+                  f"Нове повідомлення в '{team['name']}'",
+                  f"{g.user['first_name']} {g.user['last_name']}: {message[:100]}",
+                  team_id,
+                  now))
+
+        db.commit()
+
+        return jsonify({'success': True, 'message': {
+            'id': db.execute('SELECT last_insert_rowid()').fetchone()[0],
+            'user_id': g.user['id'],
+            'first_name': g.user['first_name'],
+            'last_name': g.user['last_name'],
+            'message': message,
+            'created_at': now
+        }})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/team/<int:team_id>/add-member', methods=['POST'])
+def add_team_member(team_id):
+    db = get_db()
+    data = request.json
+    email = data.get('email', '').strip()
+
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
+
+    # Check if team exists and user is creator
+    cursor = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,))
+    team = cursor.fetchone()
+
+    if not team or team['creator_id'] != g.user['id']:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    # Find user by email
+    cursor = db.execute('SELECT * FROM users WHERE email = ?', (email,))
+    user = cursor.fetchone()
+
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    if user['id'] == g.user['id']:
+        return jsonify({'error': 'Cannot invite yourself'}), 400
+
+    # Check if already member
+    cursor = db.execute('SELECT * FROM team_members WHERE team_id = ? AND user_id = ?',
+                        (team_id, user['id']))
+    if cursor.fetchone():
+        return jsonify({'error': 'User already in team'}), 400
+
+    # Send invite notification
+    db.execute('''
+        INSERT INTO notifications (recipient_id, type, title, message, related_id, created_at)
+        VALUES (?, 'team_invite', ?, ?, ?, ?)
+    ''', (user['id'],
+          f"Запрошення до команди '{team['name']}'",
+          f"{g.user['first_name']} {g.user['last_name']} запрошує вас до команди '{team['name']}'",
+          team_id,
+          datetime.now().isoformat()))
+    db.commit()
+
+    return jsonify({'status': 'ok', 'message': 'Invite sent'})
+
+
+@app.route('/api/team/<int:team_id>/remove-member/<int:member_id>', methods=['DELETE'])
+def remove_team_member(team_id, member_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    team = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+
+    if not team or team['creator_id'] != g.user['id']:
+        return jsonify({'error': 'Only creator can remove members'}), 403
+
+    if member_id == team['creator_id']:
+        return jsonify({'error': 'Cannot remove creator'}), 400
+
+    try:
+        db.execute('''DELETE FROM team_members
+                     WHERE team_id = ? AND user_id = ?''',
+                   (team_id, member_id))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/team/<int:team_id>/leave', methods=['POST'])
+def leave_team(team_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    team = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+
+    if team['creator_id'] == g.user['id']:
+        return jsonify({'error': 'Creator cannot leave team'}), 400
+
+    try:
+        db.execute('''DELETE FROM team_members
+                     WHERE team_id = ? AND user_id = ?''',
+                   (team_id, g.user['id']))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/team/<int:team_id>/rename', methods=['POST'])
+def rename_team(team_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    team = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+
+    if not team or team['creator_id'] != g.user['id']:
+        return jsonify({'error': 'Only creator can rename team'}), 403
+
+    data = request.get_json()
+    new_name = data.get('name', '').strip()
+
+    if not new_name or len(new_name) > 100:
+        return jsonify({'error': 'Invalid team name'}), 400
+
+    try:
+        db.execute('UPDATE teams SET name = ? WHERE id = ?', (new_name, team_id))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/team/<int:team_id>/disband', methods=['POST'])
+def disband_team(team_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    team = db.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+
+    if not team or team['creator_id'] != g.user['id']:
+        return jsonify({'error': 'Only creator can disband team'}), 403
+
+    try:
+        db.execute('DELETE FROM team_messages WHERE team_id = ?', (team_id,))
+        db.execute('DELETE FROM team_members WHERE team_id = ?', (team_id,))
+        db.execute('DELETE FROM teams WHERE id = ?', (team_id,))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notifications/unread-count', methods=['GET'])
+def get_unread_count():
+    db = get_db()
+    cursor = db.execute(
+        'SELECT COUNT(*) as count FROM notifications WHERE recipient_id = ? AND is_read = 0',
+        (g.user['id'],)
+    )
+    count = cursor.fetchone()['count']
+    return jsonify({'count': count})
+
+
+@app.route('/api/notifications', methods=['GET'])
+def get_notifications():
+    db = get_db()
+    cursor = db.execute('''
+        SELECT * FROM notifications 
+        WHERE recipient_id = ? 
+        ORDER BY created_at DESC
+    ''', (g.user['id'],))
+    notifications = cursor.fetchall()
+    return jsonify([dict(n) for n in notifications])
+
+
+@app.route('/api/notification/<int:notif_id>/read', methods=['POST'])
+def mark_notification_read(notif_id):
+    db = get_db()
+    db.execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND recipient_id = ?',
+               (notif_id, g.user['id']))
+    db.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/notification/<int:notif_id>/delete', methods=['DELETE'])
+def delete_notification(notif_id):
+    db = get_db()
+    db.execute('DELETE FROM notifications WHERE id = ? AND recipient_id = ?',
+               (notif_id, g.user['id']))
+    db.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/notification/<int:notif_id>/team-invite/accept', methods=['POST'])
+def accept_team_invite(notif_id):
+    db = get_db()
+
+    # Get notification
+    cursor = db.execute('SELECT * FROM notifications WHERE id = ? AND recipient_id = ?',
+                        (notif_id, g.user['id']))
+    notif = cursor.fetchone()
+
+    if not notif or notif['type'] != 'team_invite':
+        return jsonify({'error': 'Invalid notification'}), 400
+
+    team_id = notif['related_id']
+
+    # Check if already member
+    cursor = db.execute('SELECT * FROM team_members WHERE team_id = ? AND user_id = ?',
+                        (team_id, g.user['id']))
+    if cursor.fetchone():
+        return jsonify({'error': 'Already a member'}), 400
+
+    # Add to team
+    db.execute('INSERT INTO team_members (team_id, user_id, joined_at) VALUES (?, ?, ?)',
+               (team_id, g.user['id'], datetime.now().isoformat()))
+    db.execute('UPDATE notifications SET is_read = 1 WHERE id = ?', (notif_id,))
+    db.commit()
+
+    return jsonify({'status': 'ok'})
+
+
+def week_parity_for_date(date_obj, sem_start):
+    """
+    Calculate week parity (чисельник/знаменник) for a given date.
+    Week 1 (odd) = чисельник, Week 2 (even) = знаменник, etc.
+    """
+    days_since_start = (date_obj - sem_start).days
+    week_num = (days_since_start // 7) + 1
+    return 'чисельник' if week_num % 2 == 1 else 'знаменник'
+
+
+def expand_template_rows_to_dates(schedule_data, sem_start, sem_end, first_week='знаменник'):
+    """
+    Expand template schedule rows (with weekday names) to concrete dates.
+    Returns list of events for each date in the semester.
+    """
+    weekday_map = {
+        'Понеділок': 0, 'Пн': 0,
+        'Вівторок': 1, 'Вт': 1,
+        'Середа': 2, 'Ср': 2,
+        'Четвер': 3, 'Чт': 3,
+        "П'ятниця": 4, 'Пт': 4,
+        'Субота': 5, 'Сб': 5,
+        'Неділя': 6, 'Нд': 6
+    }
+
+    expanded = []
+    current_date = sem_start
+
+    while current_date <= sem_end:
+        weekday_num = current_date.weekday()
+        current_parity = week_parity_for_date(current_date, sem_start)
+
+        for row in schedule_data:
+            template_weekday = row.get('weekday', '').strip()
+            template_parity = row.get('week_type', 'обидва')
+
+            # Find matching weekday
+            found_weekday = False
+            for uk_name, num in weekday_map.items():
+                if uk_name.lower() in template_weekday.lower():
+                    found_weekday = (num == weekday_num)
+                    break
+
+            if not found_weekday:
+                continue
+
+            # Check if parity matches
+            if template_parity != 'обидва' and template_parity != current_parity:
+                continue
+
+            # Add expanded event
+            expanded_row = dict(row)
+            expanded_row['date'] = current_date.isoformat()
+            expanded.append(expanded_row)
+
+        current_date += timedelta(days=1)
+
+    return expanded
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if g.user is None:
+            return jsonify({'error': 'Not authenticated'}), 401
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
-
-
-
