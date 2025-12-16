@@ -1,11 +1,31 @@
 {% extends 'base.html' %}
 {% block content %}
-  <h2>Реєстрація</h2>
-  <form method="post">
-    <label>Ім'я<br><input name="first_name" required></label><br>
-    <label>Прізвище<br><input name="last_name" required></label><br>
-    <label>Пошта<br><input name="email" type="email" required></label><br>
-    <label>Пароль<br><input name="password" type="password" required></label><br>
-    <button type="submit">Зареєструватись</button>
-  </form>
+  <div class="register-container">
+    <h2>Реєстрація</h2>
+
+    <!-- Add error message display -->
+    {% if error %}
+      <div class="alert alert-error">
+        <p>{{ error }}</p>
+      </div>
+    {% endif %}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">
+            <p>{{ message }}</p>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="post">
+      <label>Ім'я<br><input name="first_name" required value="{{ first_name or '' }}"></label><br>
+      <label>Прізвище<br><input name="last_name" required value="{{ last_name or '' }}"></label><br>
+      <label>Пошта<br><input name="email" type="email" required value="{{ email or '' }}"></label><br>
+      <label>Пароль<br><input name="password" type="password" required></label><br>
+      <button type="submit">Зареєструватись</button>
+    </form>
+  </div>
 {% endblock %}
