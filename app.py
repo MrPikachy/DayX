@@ -35,7 +35,8 @@ def init_db():
                         email TEXT UNIQUE NOT NULL,
                         password TEXT NOT NULL,
                         group_name TEXT,
-                        subgroup INTEGER DEFAULT 1
+                        subgroup INTEGER DEFAULT 1,
+                        avatar TEXT
                     )''')
         db.execute('''CREATE TABLE IF NOT EXISTS events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,6 +106,19 @@ def init_db():
                         created_at TEXT NOT NULL,
                         FOREIGN KEY (recipient_id) REFERENCES users(id)
                     )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        deadline TEXT,
+                        is_completed INTEGER DEFAULT 0,
+                        creator_id INTEGER NOT NULL,
+                        team_id INTEGER,
+                        assigned_to_ids TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (creator_id) REFERENCES users(id),
+                        FOREIGN KEY (team_id) REFERENCES teams(id)
+                    )''')
 
         db.commit()
 
@@ -118,17 +132,25 @@ def close_connection(exception):
 
 # --- Маршрути ---
 
+@app.route('/app/user/avatar',
+           methods=['GET'])  # Додатковий хелпер, якщо потрібно, але краще правити load_logged_in_user
+# ...
+
 @app.before_request
 def load_logged_in_user():
     user_id = session.get('user_id')
+
     if user_id is None:
         g.user = None
     else:
-        g.user = {
-            'id': user_id,
-            'first_name': session.get('first_name'),
-            'last_name': session.get('last_name')
-        }
+        db = get_db()
+        user = db.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+
+        if user:
+            g.user = dict(user)
+        else:
+            session.clear()
+            g.user = None
 
 
 @app.route('/')
@@ -229,6 +251,38 @@ def save_user_subgroup():
     return jsonify({'success': True})
 
 
+@app.route('/api/user/avatar', methods=['POST'])
+def upload_avatar():
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    if 'avatar' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['avatar']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    try:
+        # Save avatar to static/images/avatars/
+        os.makedirs('static/images/avatars', exist_ok=True)
+        filename = f"user_{g.user['id']}.png"
+        filepath = os.path.join('static/images/avatars', filename)
+        file.save(filepath)
+
+        db = get_db()
+        # Note: The database schema for 'users' table was missing 'avatar_path' column.
+        # Assuming it should be 'avatar' as in the initial schema definition.
+        db.execute('UPDATE users SET avatar = ? WHERE id = ?',
+                   (f'/static/images/avatars/{filename}', g.user['id']))
+        db.commit()
+
+        return jsonify({'success': True, 'avatar_url': f'/static/images/avatars/{filename}'})
+    except Exception as e:
+        print(f"Error uploading avatar: {e}")  # Added for debugging
+        return jsonify({'error': str(e)}), 500
+
+
 def detect_subgroup(block_text):
     """Detect which subgroup a class block belongs to (1 or 2, or 0 if no marker)"""
     t = block_text.lower()
@@ -256,190 +310,215 @@ def detect_week_type(block_text):
 
 def parse_html_schedule(html_text):
     """
-    Parse HTML schedule from LPNU and extract all classes.
-    Returns list of dicts with: weekday, start_time, end_time, subject, subject_type, location, subgroup, week_type
+    Надійний парсер для Drupal Views (LPNU), який ігнорує пробіли в HTML.
     """
     soup = BeautifulSoup(html_text, 'html.parser')
     schedule = []
 
-    schedule_items = soup.find_all('div', {'class': 'scheduleitem'})
+    # Час пар (бо в HTML є тільки цифри 1, 2, 3...)
+    lesson_times = {
+        '1': ('08:30', '10:05'),
+        '2': ('10:20', '11:55'),
+        '3': ('12:10', '13:45'),
+        '4': ('14:15', '15:50'),
+        '5': ('16:00', '17:35'),
+        '6': ('17:40', '19:15'),
+        '7': ('19:20', '20:55'),
+        '8': ('21:00', '22:35')
+    }
 
-    if schedule_items:
-        for item in schedule_items:
-            try:
-                # Extract weekday
-                weekday_el = item.find('div', {'class': 'day'})
-                weekday = weekday_el.get_text(strip=True) if weekday_el else ''
+    # Знаходимо головний контейнер
+    view_content = soup.find('div', {'class': 'view-content'})
 
-                # Extract time
-                time_el = item.find('div', {'class': 'time'})
-                time_text = time_el.get_text(strip=True) if time_el else ''
-                start_time = time_text.split('-')[0].strip() if '-' in time_text else time_text
-                end_time = time_text.split('-')[1].strip() if '-' in time_text else ''
+    if not view_content:
+        print("❌ Контейнер 'view-content' не знайдено.")
+        return []
 
-                # Extract subject
-                subject_el = item.find('div', {'class': 'subject'})
-                subject = subject_el.get_text(strip=True) if subject_el else ''
+    # Змінні стану (щоб пам'ятати, де ми знаходимось під час циклу)
+    current_weekday = None
+    current_lesson_num = None
 
-                # Extract type
-                type_el = item.find('div', {'class': 'type'})
-                type_text = type_el.get_text(strip=True) if type_el else ''
+    # Перебираємо ВСІ елементи всередині контейнера по порядку
+    # recursive=False означає, що ми беремо тільки прямих дітей (h3, div, span), а не все дерево
+    for element in view_content.find_all(recursive=False):
 
-                subject_type = 'Інше'
-                if 'лекц' in type_text.lower():
-                    subject_type = 'Лекція'
-                elif 'практ' in type_text.lower():
-                    subject_type = 'Практична'
-                elif 'лаб' in type_text.lower():
-                    subject_type = 'Лабораторна'
+        # 1. Якщо це заголовок дня (Пн, Вт...)
+        if element.name == 'span' and 'view-grouping-header' in element.get('class', []):
+            current_weekday = element.get_text(strip=True)
+            continue
 
-                # Extract location
-                location_el = item.find('div', {'class': 'location'})
-                location = location_el.get_text(strip=True) if location_el else ''
+        # 2. Якщо це номер пари (<h3>1</h3>)
+        if element.name == 'h3':
+            current_lesson_num = element.get_text(strip=True)
+            continue
 
-                # Check for subgroup markers
-                full_text = item.get_text(strip=True).lower()
-                subgroup = 0
-                if 'підгр' in full_text:
-                    if '1' in full_text[:full_text.find('підгр') + 10]:
-                        subgroup = 1
-                    elif '2' in full_text[:full_text.find('підгр') + 10]:
-                        subgroup = 2
+        # 3. Якщо це блок з розкладом
+        if element.name == 'div' and 'stud_schedule' in element.get('class', []):
+            # Якщо ми ще не знаємо дня або номера пари, пропускаємо (захист від збоїв)
+            if not current_weekday or not current_lesson_num:
+                continue
 
-                # Check for week type
-                week_type = 'обидва'
-                if 'чисел' in full_text:
-                    week_type = 'чисельник'
-                elif 'знамен' in full_text:
-                    week_type = 'знаменник'
+            # Всередині stud_schedule шукаємо конкретні пари (views-row)
+            # Шукаємо div-и, у яких є ID (наприклад id='group_full' або id='sub_1_chys')
+            # Важливо: шукаємо рекурсивно всередині цього блоку
+            lesson_divs = element.find_all('div', id=True)
 
-                if not subject:
+            for div in lesson_divs:
+                elem_id = div.get('id', '')
+
+                # Знаходимо контент
+                content_div = div.find('div', {'class': 'group_content'})
+                if not content_div:
                     continue
 
-                # Create entry for each applicable subgroup
-                for sub in ([subgroup] if subgroup > 0 else [1, 2]):
+                # --- Визначення підгрупи та тижня з ID ---
+                subgroup = 0
+                week_type = 'обидва'
+
+                if 'sub_1' in elem_id:
+                    subgroup = 1
+                elif 'sub_2' in elem_id:
+                    subgroup = 2
+
+                if 'chys' in elem_id:
+                    week_type = 'чисельник'
+                elif 'znam' in elem_id:
+                    week_type = 'знаменник'
+
+                # --- Розбір тексту ---
+                # Текст всередині group_content розділений тегами <br>
+                # Ми замінюємо <br> на спецсимвол, щоб потім розбити
+                text_content = str(content_div)
+
+                # Очищаємо HTML теги, залишаючи розділювачі
+                # BeautifulSoup get_text з separator='|' замінить <br> на |
+                clean_text = content_div.get_text(separator='|', strip=True)
+                parts = [p.strip() for p in clean_text.split('|') if p.strip()]
+
+                if not parts:
+                    continue
+
+                # Назва предмету - це завжди перша частина
+                subject = parts[0]
+
+                # Деталі (Викладач, ауд, тип) - це решта
+                details = ", ".join(parts[1:]) if len(parts) > 1 else ""
+
+                # --- Аналіз деталей ---
+                subject_type = 'Інше'
+                location = ''
+
+                details_lower = details.lower()
+                if 'лекц' in details_lower:
+                    subject_type = 'Лекція'
+                elif 'практ' in details_lower:
+                    subject_type = 'Практична'
+                elif 'лаб' in details_lower:
+                    subject_type = 'Лабораторна'
+                elif 'консульт' in details_lower:
+                    subject_type = 'Консультація'
+
+                # Шукаємо локацію (щось схоже на корпус або аудиторію)
+                # Шукаємо частини тексту, що містять цифри
+                loc_parts = details.split(',')
+                for p in loc_parts:
+                    p = p.strip()
+                    # Евристика: якщо є "н.к." або це просто номер аудиторії
+                    if ('н.к.' in p) or (any(c.isdigit() for c in p) and len(p) < 10):
+                        location = p
+                        break
+
+                # Час
+                times = lesson_times.get(current_lesson_num, ('00:00', '00:00'))
+
+                # Додаємо в результат
+                subgroups_to_add = [1, 2] if subgroup == 0 else [subgroup]
+
+                for sub in subgroups_to_add:
                     schedule.append({
-                        'weekday': weekday,
-                        'start_time': start_time,
-                        'end_time': end_time,
+                        'weekday': current_weekday,
+                        'start_time': times[0],
+                        'end_time': times[1],
                         'subject': subject,
                         'subject_type': subject_type,
                         'location': location,
                         'subgroup': sub,
                         'week_type': week_type
                     })
-            except Exception as e:
-                print(f"[v0] Error parsing schedule item: {e}")
-                continue
 
-    if not schedule:
-        print("[v0] No scheduleitem divs found, trying table parsing")
-        table = soup.find('table')
-        if table:
-            rows = table.find_all('tr')
-            if len(rows) >= 2:
-                header_cells = rows[0].find_all(['th', 'td'])
-                weekdays = [cell.get_text(strip=True) for cell in header_cells]
-
-                for r_idx in range(1, len(rows)):
-                    cells = rows[r_idx].find_all(['td', 'th'])
-                    if not cells:
-                        continue
-
-                    time_text = cells[0].get_text(strip=True) if cells else ''
-                    start_time = time_text.split('-')[0].strip() if '-' in time_text else time_text
-                    end_time = time_text.split('-')[1].strip() if '-' in time_text else ''
-
-                    for day_idx in range(min(len(weekdays), len(cells) - 1)):
-                        cell = cells[day_idx + 1]
-                        raw_text = cell.get_text(strip=True)
-
-                        if not raw_text:
-                            continue
-
-                        blocks = re.split(r'\n{2,}', raw_text)
-                        for block in blocks:
-                            block = block.strip()
-                            if not block:
-                                continue
-
-                            lines = block.split('\n')
-                            lines = [line.strip() for line in lines if line.strip()]
-
-                            subject = lines[0] if lines else ''
-                            subject_type = 'Інше'
-                            if lines:
-                                last_line = lines[-1].lower()
-                                if 'лекц' in last_line:
-                                    subject_type = 'Лекція'
-                                elif 'практ' in last_line:
-                                    subject_type = 'Практична'
-                                elif 'лаб' in last_line:
-                                    subject_type = 'Лабораторна'
-
-                            location = lines[1] if len(lines) > 2 else ''
-
-                            subgroup = 0
-                            if '1' in block:
-                                subgroup = 1
-                            elif '2' in block:
-                                subgroup = 2
-
-                            for sub in ([subgroup] if subgroup > 0 else [1, 2]):
-                                schedule.append({
-                                    'weekday': weekdays[day_idx] if day_idx < len(weekdays) else '',
-                                    'start_time': start_time,
-                                    'end_time': end_time,
-                                    'subject': subject,
-                                    'subject_type': subject_type,
-                                    'location': location,
-                                    'subgroup': sub,
-                                    'week_type': 'обидва'
-                                })
-
-    print(f"[v0] Parsed {len(schedule)} schedule items")
+    print(f"✅ Успішно розпарсено {len(schedule)} пар.")
     return schedule
 
 
 def fetch_and_cache_schedule(group_name):
-    """Fetch schedule from LPNU and cache it in database"""
+    """
+    Запит з детальним дебагом і збереженням HTML файлу.
+    """
     try:
-        url = "https://student.lpnu.ua/students_schedule"
-        params = {
-            'studygroup_abbrname': group_name,
-            'semestr': '1',
-            'semestrduration': '1'
+        import urllib.parse
+        encoded_group = urllib.parse.quote(group_name)
+
+        # Спробуємо базове посилання без зайвих параметрів тривалості
+        base_url = "https://student.lpnu.ua/students_schedule"
+        full_url = f"{base_url}?studygroup_abbrname={encoded_group}&semestr=1"
+
+        # Використовуємо Session, щоб зберігати куки (іноді це допомагає)
+        session = requests.Session()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Referer': 'https://student.lpnu.ua/',
+            'Upgrade-Insecure-Requests': '1'
         }
 
-        response = requests.get(url, params=params, timeout=10)
+        print(f"🚀 Sending request to: {full_url}")
+
+        response = session.get(full_url, headers=headers, timeout=20)
         response.encoding = 'utf-8'
 
         if response.status_code != 200:
+            print(f"❌ Status code: {response.status_code}")
             return False
 
-        # Parse the HTML
+        # === ВАЖЛИВО: ЗБЕРІГАЄМО HTML ДЛЯ ПЕРЕВІРКИ ===
+        debug_filename = "lpnu_debug.html"
+        with open(debug_filename, "w", encoding="utf-8") as f:
+            f.write(response.text)
+        print(f"📄 HTML відповідь збережено у файл '{debug_filename}'. Відкрийте його в браузері!")
+        # ===============================================
+
+        # Парсимо
         schedule_rows = parse_html_schedule(response.text)
 
         if not schedule_rows:
+            print("❌ Parsed 0 items.")
+            # Додаткова перевірка на текст помилки
+            if "не знайдено" in response.text.lower():
+                print("⚠️ На сторінці написано, що розклад не знайдено.")
             return False
 
-        # Clear old schedule for this group
+        # Зберігаємо
         db = get_db()
         db.execute('DELETE FROM schedule WHERE group_name = ?', (group_name,))
 
-        # Insert new schedule
         now = datetime.now().isoformat()
+        count = 0
         for row in schedule_rows:
             db.execute('''INSERT INTO schedule 
                          (group_name, subgroup, weekday, start_time, end_time, subject, subject_type, location, week_type, cached_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                        (group_name, row['subgroup'], row['weekday'], row['start_time'], row['end_time'],
                         row['subject'], row['subject_type'], row['location'], row['week_type'], now))
+            count += 1
 
         db.commit()
+        print(f"✅ SUCCESS! Cached {count} classes.")
         return True
+
     except Exception as e:
-        print(f"Error fetching schedule: {e}")
+        print(f"🔥 Critical Error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -449,7 +528,7 @@ def get_current_week_type():
     # Week 1 of semester = чисельник, Week 2 = знаменник, etc.
     # You may need to adjust based on actual semester start date
     week_num = datetime.now().isocalendar()[1]
-    return 'чисельник' if week_num % 2 == 1 else 'знаменник'
+    return 'знаменник' if week_num % 2 == 1 else 'чисельник'
 
 
 def fetch_lpnu_schedule(group_name, subgroup=1):
@@ -519,55 +598,86 @@ def get_schedule(group_name):
     if not g.user:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    # Get subgroup from query params or user profile
+    # Нормалізуємо назву групи (верхній регістр, без пробілів), бо ПП-12 і пп-12 це різне
+    group_name = group_name.strip().upper()
+
+    # Отримуємо підгрупу
     req_sub = int(request.args.get('subgroup', '0'))
     if req_sub == 0:
         db = get_db()
         user = db.execute('SELECT subgroup FROM users WHERE id = ?', (g.user['id'],)).fetchone()
-        req_sub = user['subgroup'] if user else 1
+        req_sub = user['subgroup'] if user and user['subgroup'] else 1
 
     try:
         db = get_db()
 
-        # Fetch all raw schedule rows for this group
+        # === ПОЧАТОК ВИПРАВЛЕННЯ ===
+        # Перевіряємо, чи є взагалі розклад для цієї групи в базі
+        exists = db.execute('SELECT 1 FROM schedule WHERE group_name = ? LIMIT 1', (group_name,)).fetchone()
+
+        # Якщо в базі пусто - ЙДЕМО НА САЙТ!
+        if not exists:
+            print(f"⚠️ База пуста для групи {group_name}. Завантажую з LPNU...")
+            success = fetch_and_cache_schedule(group_name)
+            if not success:
+                print(f"❌ Не вдалося знайти розклад для {group_name} на сайті.")
+            else:
+                print(f"✅ Розклад завантажено успішно!")
+        # === КІНЕЦЬ ВИПРАВЛЕННЯ ===
+
+        # Тепер, коли дані точно є (або ми спробували їх дістати), читаємо з бази
         raw_rows = db.execute('''SELECT * FROM schedule WHERE group_name = ?''',
                               (group_name,)).fetchall()
 
-        # Convert to list of dicts
+        # Конвертуємо
         schedule_data = [dict(row) for row in raw_rows]
 
-        # Determine current semester dates
+        # Дати семестру (Осінь 2025)
+        # Розширив діапазон, щоб точно захопити грудень
         today = date.today()
-        sem1_year = today.year if today.month >= 9 else today.year - 1
-        sem1_start = date(sem1_year, 9, 1)
-        sem1_end = date(sem1_year, 12, 20)
+        sem_year = today.year
+        # Якщо зараз кінець року (грудень), семестр почався у вересні цього року
+        if today.month >= 8:
+            sem_start = date(sem_year, 9, 1)
+            sem_end = date(sem_year, 12, 19)
+        else:
+            # Якщо початок року (січень-червень), це 2-й семестр
+            sem_start = date(sem_year, 2, 1)
+            sem_end = date(sem_year, 6, 30)
 
-        # Expand template rows to concrete dates
-        expanded = expand_template_rows_to_dates(schedule_data, sem1_start, sem1_end)
+        # Розгортаємо шаблонні дні у конкретні дати
+        expanded = expand_template_rows_to_dates(schedule_data, sem_start, sem_end)
 
-        # Filter by subgroup: include if subgroup==0 (for all) or subgroup matches request
+        # Фільтруємо по підгрупі
         filtered_rows = [row for row in expanded if row.get('subgroup', 0) == 0 or row.get('subgroup', 0) == req_sub]
 
-        # Format as FullCalendar events
         events = []
         for idx, row in enumerate(filtered_rows):
             event_date = row.get('date', '')
             start_time = row.get('start_time', '08:00')
-            end_time = row.get('end_time', '09:50')
+            end_time = row.get('end_time', '')
+
+            # Якщо немає часу кінця, додаємо 1 годину 35 хв (стандартна пара + перерва)
+            if not end_time and start_time:
+                try:
+                    dt_start = datetime.strptime(start_time, "%H:%M")
+                    dt_end = dt_start + timedelta(minutes=95)
+                    end_time = dt_end.strftime("%H:%M")
+                except:
+                    end_time = "09:35"
 
             if event_date and start_time:
                 start_iso = f"{event_date}T{start_time}:00"
-                end_iso = f"{event_date}T{end_time}:00" if end_time else f"{event_date}T09:50:00"
+                end_iso = f"{event_date}T{end_time}:00"
 
                 event_type = row.get('subject_type', 'Інше').lower()
+                class_name = ['event-other']
                 if 'лекц' in event_type:
                     class_name = ['event-lecture']
                 elif 'практ' in event_type:
                     class_name = ['event-practical']
                 elif 'лаб' in event_type:
                     class_name = ['event-lab']
-                else:
-                    class_name = ['event-other']
 
                 events.append({
                     'id': f"lpnu_{idx}_{row.get('id', idx)}",
@@ -584,7 +694,7 @@ def get_schedule(group_name):
                     'className': class_name
                 })
 
-        # Fetch custom user events
+        # Додаємо власні події (Custom Events)
         custom_events_rows = db.execute('SELECT * FROM events WHERE user_id = ? AND group_name = ?',
                                         (g.user['id'], group_name)).fetchall()
 
@@ -593,8 +703,8 @@ def get_schedule(group_name):
             row_dict = dict(row)
             if row_dict.get('date') and row_dict.get('start_time'):
                 start_iso = f"{row_dict['date']}T{row_dict['start_time']}:00"
-                end_iso = f"{row_dict['date']}T{row_dict.get('end_time', '09:50')}:00" if row_dict.get(
-                    'end_time') else None
+                end_time = row_dict.get('end_time') or "23:59"
+                end_iso = f"{row_dict['date']}T{end_time}:00"
 
                 custom_events.append({
                     'id': f"custom_{row_dict['id']}",
@@ -621,7 +731,7 @@ def get_schedule(group_name):
         print(f"[v0] Error in get_schedule: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e), 'events': [], 'schedule': [], 'custom_events': []}), 500
+        return jsonify({'error': str(e), 'events': []}), 500
 
 
 @app.route('/api/event', methods=['POST'])
@@ -674,7 +784,7 @@ def schedule():
 
 @app.route('/groups')
 def groups():
-    # Поки пусто
+    # Пока пусто
     return render_template('groups.html')
 
 
@@ -748,19 +858,23 @@ def team_chat(team_id):
 
     # Get team members
     members = db.execute('''
-        SELECT u.id, u.first_name, u.last_name FROM team_members tm
-        JOIN users u ON tm.user_id = u.id
-        WHERE tm.team_id = ?
-        ORDER BY u.first_name
-    ''', (team_id,)).fetchall()
+            SELECT u.id, u.first_name, u.last_name, u.avatar 
+            FROM team_members tm
+            JOIN users u ON tm.user_id = u.id
+            WHERE tm.team_id = ?
+            ORDER BY u.first_name
+        ''', (team_id,)).fetchall()
 
     # Get messages
-    messages = db.execute('''
-        SELECT m.*, u.first_name, u.last_name FROM team_messages m
-        JOIN users u ON m.user_id = u.id
-        WHERE m.team_id = ?
-        ORDER BY m.created_at ASC
-    ''', (team_id,)).fetchall()
+    messages_rows = db.execute('''
+            SELECT m.*, u.first_name, u.last_name, u.avatar  
+            FROM team_messages m
+            JOIN users u ON m.user_id = u.id
+            WHERE m.team_id = ?
+            ORDER BY m.created_at ASC
+        ''', (team_id,)).fetchall()
+
+    messages = [dict(row) for row in messages_rows]
 
     return render_template('team-chat.html', team=team, is_creator=is_creator,
                            members=members, messages=messages)
@@ -827,7 +941,7 @@ def send_team_message(team_id):
 @app.route('/api/team/<int:team_id>/add-member', methods=['POST'])
 def add_team_member(team_id):
     db = get_db()
-    data = request.json
+    data = request.get_json()
     email = data.get('email', '').strip()
 
     if not email:
@@ -913,6 +1027,31 @@ def leave_team(team_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/team/<int:team_id>/members', methods=['GET'])
+def get_team_members(team_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    # Verify user is member of team
+    member = db.execute(
+        'SELECT * FROM team_members WHERE team_id = ? AND user_id = ?',
+        (team_id, g.user['id'])
+    ).fetchone()
+
+    if not member:
+        return jsonify({'error': 'Not a team member'}), 403
+
+    members = db.execute('''
+            SELECT u.id, u.first_name, u.last_name, u.avatar 
+            FROM users u
+            JOIN team_members tm ON u.id = tm.user_id
+            WHERE tm.team_id = ?
+        ''', (team_id,)).fetchall()
+
+    return jsonify([dict(m) for m in members])
 
 
 @app.route('/api/team/<int:team_id>/rename', methods=['POST'])
@@ -1017,7 +1156,7 @@ def accept_team_invite(notif_id):
     team_id = notif['related_id']
 
     # Check if already member
-    cursor = db.execute('SELECT * FROM team_members WHERE team_id = ? AND user_id = ?',
+    cursor = db.execute('SELECT id FROM team_members WHERE team_id = ? AND user_id = ?',
                         (team_id, g.user['id']))
     if cursor.fetchone():
         return jsonify({'error': 'Already a member'}), 400
@@ -1031,14 +1170,173 @@ def accept_team_invite(notif_id):
     return jsonify({'status': 'ok'})
 
 
+@app.route('/tasks')
+def tasks():
+    if g.user is None:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    # Get personal tasks and team tasks where user is a member
+    personal_tasks = db.execute('''
+        SELECT * FROM tasks 
+        WHERE creator_id = ? AND team_id IS NULL
+        ORDER BY is_completed ASC, deadline ASC
+    ''', (g.user['id'],)).fetchall()
+
+    user_teams = db.execute('''
+        SELECT t.id, t.name FROM teams t
+        JOIN team_members tm ON t.id = tm.team_id
+        WHERE tm.user_id = ?
+    ''', (g.user['id'],)).fetchall()
+
+    return render_template('tasks.html', personal_tasks=personal_tasks, user_teams=user_teams)
+
+
+@app.route('/api/tasks/personal', methods=['GET'])
+def get_personal_tasks():
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    tasks_list = db.execute('''
+        SELECT * FROM tasks 
+        WHERE creator_id = ? AND team_id IS NULL
+        ORDER BY is_completed ASC, deadline ASC
+    ''', (g.user['id'],)).fetchall()
+
+    return jsonify([dict(row) for row in tasks_list])
+
+
+@app.route('/api/tasks/team/<int:team_id>', methods=['GET'])
+def get_team_tasks(team_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    # Check if user is member of team
+    is_member = db.execute('''
+        SELECT id FROM team_members 
+        WHERE team_id = ? AND user_id = ?
+    ''', (team_id, g.user['id'])).fetchone()
+
+    if not is_member:
+        return jsonify({'error': 'Not a team member'}), 403
+
+    tasks_list = db.execute('''
+        SELECT * FROM tasks 
+        WHERE team_id = ?
+        ORDER BY is_completed ASC, deadline ASC
+    ''', (team_id,)).fetchall()
+
+    return jsonify([dict(row) for row in tasks_list])
+
+
+@app.route('/api/tasks', methods=['POST'])
+def create_task():
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.get_json()
+    db = get_db()
+
+    try:
+        now = datetime.now().isoformat()
+        assigned_ids = data.get('assigned_to_ids')
+        assigned_ids_json = json.dumps(assigned_ids) if assigned_ids else None
+
+        cursor = db.execute('''
+            INSERT INTO tasks (title, description, deadline, creator_id, team_id, assigned_to_ids, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (data.get('title'), data.get('description'), data.get('deadline'),
+              g.user['id'], data.get('team_id'), assigned_ids_json, now))
+
+        task_id = cursor.lastrowid
+        db.commit()
+        return jsonify({'success': True, 'task_id': task_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks/<int:task_id>', methods=['PUT'])
+def update_task(task_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.get_json()
+    db = get_db()
+
+    # Check ownership
+    task = db.execute('SELECT creator_id, team_id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+
+    is_creator = task['creator_id'] == g.user['id']
+    is_team_creator = False
+
+    if task['team_id']:
+        team = db.execute('SELECT creator_id FROM teams WHERE id = ?', (task['team_id'],)).fetchone()
+        is_team_creator = team and team['creator_id'] == g.user['id']
+
+    if not (is_creator or is_team_creator):
+        return jsonify({'error': 'Permission denied'}), 403
+
+    try:
+        if 'is_completed' in data:
+            db.execute('UPDATE tasks SET is_completed = ? WHERE id = ?', (data['is_completed'], task_id))
+        if 'title' in data:
+            db.execute('UPDATE tasks SET title = ? WHERE id = ?', (data['title'], task_id))
+        if 'description' in data:
+            db.execute('UPDATE tasks SET description = ? WHERE id = ?', (data['description'], task_id))
+        if 'deadline' in data:
+            db.execute('UPDATE tasks SET deadline = ? WHERE id = ?', (data['deadline'], task_id))
+        if 'assigned_to_ids' in data:
+            assigned_ids = data['assigned_to_ids']
+            db.execute('UPDATE tasks SET assigned_to_ids = ? WHERE id = ?',
+                       (json.dumps(assigned_ids) if assigned_ids else None, task_id))
+
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    if not g.user:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    db = get_db()
+    task = db.execute('SELECT creator_id, team_id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+
+    is_creator = task['creator_id'] == g.user['id']
+    is_team_creator = False
+
+    if task['team_id']:
+        team = db.execute('SELECT creator_id FROM teams WHERE id = ?', (task['team_id'],)).fetchone()
+        is_team_creator = team and team['creator_id'] == g.user['id']
+
+    if not (is_creator or is_team_creator):
+        return jsonify({'error': 'Permission denied'}), 403
+
+    try:
+        db.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 def week_parity_for_date(date_obj, sem_start):
     """
     Calculate week parity (чисельник/знаменник) for a given date.
-    Week 1 (odd) = чисельник, Week 2 (even) = знаменник, etc.
+    Swapped the parity calculation - first week is чисельник (odd weeks), знаменник (even weeks)
     """
     days_since_start = (date_obj - sem_start).days
     week_num = (days_since_start // 7) + 1
-    return 'чисельник' if week_num % 2 == 1 else 'знаменник'
+    return 'знаменник' if week_num % 2 == 1 else 'чисельник'
 
 
 def expand_template_rows_to_dates(schedule_data, sem_start, sem_end, first_week='знаменник'):

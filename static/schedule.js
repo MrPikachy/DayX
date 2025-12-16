@@ -7,6 +7,12 @@ let allEvents = []
 let editingEventId = null
 let editingEventDate = null
 
+// Helper to get raw DB ID from calendar ID
+function getRawId(id) {
+  if (!id) return null;
+  return String(id).replace("custom_", "");
+}
+
 // Format date as YYYY-MM-DD
 function formatDate(d) {
   const year = d.getFullYear()
@@ -133,7 +139,9 @@ function renderCalendar() {
 function createEventElement(event, dateStr) {
   const el = document.createElement("div")
   const typeClass = (event.className && event.className[0]) ? event.className[0] : "event-other"
-  const isCustom = event.extendedProps && event.extendedProps.raw && (parseInt(event.extendedProps.raw.is_custom || 0) === 1)
+  // Перевірка на кастомну подію (або по ID, або по extendedProps)
+  const isCustom = (event.id && String(event.id).startsWith("custom_")) ||
+                   (event.extendedProps && event.extendedProps.raw && parseInt(event.extendedProps.raw.is_custom || 0) === 1);
 
   el.className = `day-event ${typeClass} ${isCustom ? "custom" : ""}`
   el.dataset.eventId = event.id
@@ -156,8 +164,6 @@ function createEventElement(event, dateStr) {
     ev.stopPropagation()
     if (isCustom) {
       openFullModal(dateStr, event) // редагування власної події
-    } else {
-      // можна показати легкий tooltip або нічого — тут нічого
     }
   })
 
@@ -178,8 +184,6 @@ function createEventElement(event, dateStr) {
   return el
 }
 
-
-
 function showContextMenu(type, dateStr, event, mouseEvent) {
   const eventMenu = document.getElementById("event-context-menu")
   const emptyMenu = document.getElementById("empty-context-menu")
@@ -187,6 +191,8 @@ function showContextMenu(type, dateStr, event, mouseEvent) {
   // Hide both menus first
   eventMenu.classList.add("hidden")
   emptyMenu.classList.add("hidden")
+
+  if (type === "hide-all") return;
 
   if (type === "event" && event) {
     editingEventId = event.id
@@ -204,8 +210,10 @@ function showContextMenu(type, dateStr, event, mouseEvent) {
 }
 
 document.addEventListener("click", () => {
-  document.getElementById("event-context-menu").classList.add("hidden")
-  document.getElementById("empty-context-menu").classList.add("hidden")
+  const em = document.getElementById("event-context-menu");
+  const emp = document.getElementById("empty-context-menu");
+  if(em) em.classList.add("hidden");
+  if(emp) emp.classList.add("hidden");
 })
 
 // Close modal
@@ -239,11 +247,17 @@ function openFullModal(dateStr, eventData = null) {
   const startInput = document.getElementById("ev-start")
   const endInput = document.getElementById("ev-end")
 
-  if (eventData && eventData.extendedProps && eventData.extendedProps.raw && eventData.extendedProps.raw.is_custom) {
+  // Перевіряємо чи це кастомна подія
+  const isCustom = eventData && (
+      (eventData.id && String(eventData.id).startsWith("custom_")) ||
+      (eventData.extendedProps && eventData.extendedProps.raw && eventData.extendedProps.raw.is_custom)
+  );
+
+  if (isCustom) {
     title.textContent = "Редагувати подію"
     titleInput.value = eventData.title || ""
     dateInput.value = eventData.start ? eventData.start.split("T")[0] : dateStr
-    typeInput.value = eventData.extendedProps.raw.type || "other"
+    typeInput.value = (eventData.extendedProps && eventData.extendedProps.raw) ? eventData.extendedProps.raw.type : "other"
     startInput.value = eventData.start ? eventData.start.substring(11, 16) : ""
     endInput.value = eventData.end ? eventData.end.substring(11, 16) : ""
     editingEventId = eventData.id
@@ -302,7 +316,8 @@ async function saveEvent() {
   }
 
   const eventData = {
-    id: editingEventId,
+    // ВАЖЛИВО: Очищаємо ID від 'custom_' перед відправкою
+    id: getRawId(editingEventId),
     group_name: currentGroup,
     title: titleInput.value,
     type: typeInput.value,
@@ -338,7 +353,8 @@ async function saveEventName() {
 
   const event = allEvents.find((e) => e.id == editingEventId)
   const eventData = {
-    id: editingEventId,
+    // ВАЖЛИВО: Очищаємо ID
+    id: getRawId(editingEventId),
     group_name: currentGroup,
     title: input.value,
     type: event.extendedProps.raw.type,
@@ -371,7 +387,8 @@ async function saveEventTime() {
 
   const event = allEvents.find((e) => e.id == editingEventId)
   const eventData = {
-    id: editingEventId,
+    // ВАЖЛИВО: Очищаємо ID
+    id: getRawId(editingEventId),
     group_name: currentGroup,
     title: event.title,
     type: event.extendedProps.raw.type,
@@ -401,8 +418,11 @@ async function saveEventTime() {
 async function deleteEvent() {
   if (!editingEventId || !confirm("Ви впевнені?")) return
 
+  // ВАЖЛИВО: Очищаємо ID перед відправкою у URL
+  const numericId = getRawId(editingEventId);
+
   try {
-    const response = await fetch(`/api/event/${editingEventId}`, {
+    const response = await fetch(`/api/event/${numericId}`, {
       method: "DELETE",
     })
 
@@ -483,40 +503,43 @@ function setupSubgroupSwitcher() {
   const btn1 = document.getElementById("subgroup-btn-1")
   const btn2 = document.getElementById("subgroup-btn-2")
 
-  // встановимо data-subgroup якщо нема
+  if(!btn1 || !btn2) return;
+
   btn1.dataset.subgroup = btn1.dataset.subgroup || "1"
   btn2.dataset.subgroup = btn2.dataset.subgroup || "2"
 
-  // загальний handler, використовує data-subgroup
   function switchHandler(e) {
     const target = e.currentTarget
     const sg = parseInt(target.dataset.subgroup, 10) || 1
     currentSubgroup = sg
     updateSubgroupUI()
-    // збереження в бекенд
     saveUserSubgroup(sg).then(() => {
-      // оновимо події після успішного збереження
       fetchSchedule().then(() => renderCalendar())
     }).catch(() => {
-      // навіть якщо не вдалось зберегти — оновимо UI
       fetchSchedule().then(() => renderCalendar())
     })
   }
 
-  btn1.removeEventListener('click', btn1._v0_handler)
-  btn2.removeEventListener('click', btn2._v0_handler)
-
   btn1._v0_handler = switchHandler
   btn2._v0_handler = switchHandler
 
-  btn1.addEventListener("click", btn1._v0_handler)
-  btn2.addEventListener("click", btn2._v0_handler)
+  // Clean up old listeners if any (naive approach)
+  // Cloning node is easiest way to wipe listeners without knowing them
+  const newBtn1 = btn1.cloneNode(true)
+  const newBtn2 = btn2.cloneNode(true)
+  btn1.parentNode.replaceChild(newBtn1, btn1)
+  btn2.parentNode.replaceChild(newBtn2, btn2)
+
+  newBtn1.addEventListener("click", switchHandler)
+  newBtn2.addEventListener("click", switchHandler)
 }
 
 
 function updateSubgroupUI() {
   const btn1 = document.getElementById("subgroup-btn-1")
   const btn2 = document.getElementById("subgroup-btn-2")
+
+  if(!btn1 || !btn2) return;
 
   if (currentSubgroup === 1) {
     btn1.classList.add("subgroup-active")
@@ -540,7 +563,6 @@ async function saveUserSubgroup(subgroup) {
     }
     const data = await response.json()
     if (data && data.success) {
-      // оновимо локальне значення
       window.CURRENT_USER_SUBGROUP = data.subgroup
       return true
     }
@@ -560,10 +582,7 @@ if (currentGroup) {
 }
 
 
-// Показати view-only модал для пар розкладу
 function openViewModal(event) {
-  // Створимо простий modal на льоту або використаємо існуючий #modal але в режимі readonly
-  // Ми будемо використати #modal як view-only: сховаємо кнопки збереження
   const modal = document.getElementById("modal")
   const title = document.getElementById("modal-title")
   const titleInput = document.getElementById("ev-title")
@@ -574,7 +593,6 @@ function openViewModal(event) {
   const saveBtn = document.getElementById("save-ev")
   const cancelBtn = document.getElementById("cancel-ev")
 
-  // Заповнимо значення
   title.textContent = "Інформація про пару"
   titleInput.value = event.title || ""
   dateInput.value = event.start ? event.start.split("T")[0] : ""
@@ -582,19 +600,15 @@ function openViewModal(event) {
   startInput.value = event.start ? event.start.substring(11,16) : ""
   endInput.value = event.end ? event.end.substring(11,16) : ""
 
-  // Робимо поля readonly / disabled
   titleInput.setAttribute("disabled", "disabled")
   dateInput.setAttribute("disabled", "disabled")
   typeInput.setAttribute("disabled", "disabled")
   startInput.setAttribute("disabled", "disabled")
   endInput.setAttribute("disabled", "disabled")
 
-  // Приховати кнопку збереження (щоб не можна було змінити)
   saveBtn.style.display = "none"
   cancelBtn.textContent = "Закрити"
 
-  // Збережемо стан щоб відновити при закритті
   modal._v0_view_mode = true
-
   modal.classList.remove("hidden")
 }
