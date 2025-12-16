@@ -1,614 +1,247 @@
-const LPNU_API = "https://student.lpnu.ua/students_schedule"
-let currentDate = new Date()
-const currentGroup = window.CURRENT_USER_GROUP
-let currentSubgroup = (typeof window.CURRENT_USER_SUBGROUP !== 'undefined') ? parseInt(window.CURRENT_USER_SUBGROUP, 10) : 1;
-if (!currentSubgroup || (currentSubgroup !== 1 && currentSubgroup !== 2)) currentSubgroup = 1;
-let allEvents = []
-let editingEventId = null
-let editingEventDate = null
-
-// Helper to get raw DB ID from calendar ID
-function getRawId(id) {
-  if (!id) return null;
-  return String(id).replace("custom_", "");
-}
-
-// Format date as YYYY-MM-DD
-function formatDate(d) {
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-// Get first day of month (Monday = 0)
-function getFirstDayOfMonth(d) {
-  const first = new Date(d.getFullYear(), d.getMonth(), 1)
-  return (first.getDay() + 6) % 7
-}
-
-// Initialize calendar
-async function initCalendar() {
-  if (!currentGroup) {
-    console.log("No group selected")
-    return
-  }
-
-  setupSubgroupSwitcher()
-  updateSubgroupUI()
-  await fetchSchedule()
-  renderCalendar()
-  setupEventListeners()
-}
-
-async function fetchSchedule() {
-  try {
-    const response = await fetch(`/api/schedule/${currentGroup}?subgroup=${currentSubgroup}`)
-    const data = await response.json()
-
-    // Use events from API directly (already formatted for calendar)
-    allEvents = data.events || []
-    console.log("[v0] Loaded", allEvents.length, "events")
-  } catch (error) {
-    console.error("[v0] Error fetching schedule:", error)
-    allEvents = []
-  }
-}
-
-function getEventsForDate(dateStr) {
-  return allEvents.filter((e) => {
-    const eventStart = e.start || ""
-    // Extract date from ISO format (YYYY-MM-DDTHH:MM:SS)
-    const eventDate = eventStart.split("T")[0]
-    return eventDate === dateStr
-  })
-}
-
-// Render month calendar
-function renderCalendar() {
-  const monthLabel = document.getElementById("month-label")
-  const calendar = document.getElementById("calendar")
-  calendar.innerHTML = ""
-
-  const year = currentDate.getFullYear()
-  const month = currentDate.getMonth()
-  const firstDay = getFirstDayOfMonth(currentDate)
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const today = formatDate(new Date())
-
-  // Update month label
-  const monthName = currentDate.toLocaleString("uk-UA", {
-    month: "long",
-    year: "numeric",
-  })
-  monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1)
-
-  // Create empty cells for days before month starts
-  for (let i = 0; i < firstDay; i++) {
-    const emptyCell = document.createElement("div")
-    emptyCell.className = "calendar-day empty"
-    calendar.appendChild(emptyCell)
-  }
-
-  // Create cells for each day of month
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day)
-    const dateStr = formatDate(date)
-    const isToday = dateStr === today
-
-    const dayCell = document.createElement("div")
-    dayCell.className = `calendar-day ${isToday ? "today" : ""}`
-    dayCell.dataset.date = dateStr
-
-    // Day number
-    const dayNum = document.createElement("div")
-    dayNum.className = "day-number"
-    dayNum.textContent = day
-    dayCell.appendChild(dayNum)
-
-    // Events container
-    const eventsContainer = document.createElement("div")
-    eventsContainer.className = "day-events"
-
-    const dayEvents = getEventsForDate(dateStr)
-    dayEvents.sort((a, b) => {
-      const aS = a.start || ""
-      const bS = b.start || ""
-      return aS.localeCompare(bS)
-    })
-    dayEvents.forEach((event) => {
-      const eventEl = createEventElement(event, dateStr)
-      eventsContainer.appendChild(eventEl)
-    })
-
-    dayCell.appendChild(eventsContainer)
-
-    dayCell.addEventListener("contextmenu", (e) => {
-      const isEventClick = e.target.closest(".day-event")
-      if (!isEventClick) {
-        e.preventDefault()
-        showContextMenu("empty", dateStr, null, e)
-      }
-    })
-
-    calendar.appendChild(dayCell)
-  }
-}
-
-// Create event element
-function createEventElement(event, dateStr) {
-  const el = document.createElement("div")
-  const typeClass = (event.className && event.className[0]) ? event.className[0] : "event-other"
-  // Перевірка на кастомну подію (або по ID, або по extendedProps)
-  const isCustom = (event.id && String(event.id).startsWith("custom_")) ||
-                   (event.extendedProps && event.extendedProps.raw && parseInt(event.extendedProps.raw.is_custom || 0) === 1);
-
-  el.className = `day-event ${typeClass} ${isCustom ? "custom" : ""}`
-  el.dataset.eventId = event.id
-
-  const title = event.title || "Подія"
-  const startTime = event.start ? (event.start.split("T")[1] || "").substring(0,5) : ""
-  const endTime = event.end ? (event.end.split("T")[1] || "").substring(0,5) : ""
-  const timeRange = startTime ? (startTime + (endTime ? ` - ${endTime}` : "")) : ""
-
-  let displayText = title
-  if (displayText.length > 20) displayText = displayText.substring(0, 20) + "…"
-  if (timeRange) displayText = `${displayText} · ${timeRange}`
-
-  el.textContent = displayText
-  el.title = `${title}\n${timeRange}`
-
-  // Ліва кнопка: тільки для власних подій відкриває редагування
-  el.addEventListener("click", (ev) => {
-    ev.preventDefault()
-    ev.stopPropagation()
-    if (isCustom) {
-      openFullModal(dateStr, event) // редагування власної події
-    }
-  })
-
-  // ПКМ (right click)
-  el.addEventListener("contextmenu", (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (isCustom) {
-      // контекстне меню для власної події (редагування/видалення)
-      showContextMenu("event", dateStr, event, e)
-    } else {
-      // для пар з розкладу відкриваємо view-only інформаційне вікно
-      showContextMenu("hide-all") // сховати інші меню
-      openViewModal(event)
-    }
-  })
-
-  return el
-}
-
-function showContextMenu(type, dateStr, event, mouseEvent) {
-  const eventMenu = document.getElementById("event-context-menu")
-  const emptyMenu = document.getElementById("empty-context-menu")
-
-  // Hide both menus first
-  eventMenu.classList.add("hidden")
-  emptyMenu.classList.add("hidden")
-
-  if (type === "hide-all") return;
-
-  if (type === "event" && event) {
-    editingEventId = event.id
-    editingEventDate = dateStr
-    eventMenu.style.left = mouseEvent.clientX + "px"
-    eventMenu.style.top = mouseEvent.clientY + "px"
-    eventMenu.classList.remove("hidden")
-  } else if (type === "empty") {
-    editingEventDate = dateStr
-    editingEventId = null
-    emptyMenu.style.left = mouseEvent.clientX + "px"
-    emptyMenu.style.top = mouseEvent.clientY + "px"
-    emptyMenu.classList.remove("hidden")
-  }
-}
-
-document.addEventListener("click", () => {
-  const em = document.getElementById("event-context-menu");
-  const emp = document.getElementById("empty-context-menu");
-  if(em) em.classList.add("hidden");
-  if(emp) emp.classList.add("hidden");
-})
-
-// Close modal
-function closeModal() {
-  const modal = document.getElementById("modal")
-  // відновимо поля editable якщо були readonly
-  const inputs = modal.querySelectorAll("input, select, textarea, button")
-  inputs.forEach(i => {
-    i.removeAttribute("disabled")
-  })
-  // відновимо save btn та cancel btn text
-  const saveBtn = document.getElementById("save-ev")
-  if (saveBtn) saveBtn.style.display = ""
-  const cancelBtn = document.getElementById("cancel-ev")
-  if (cancelBtn) cancelBtn.textContent = "Скасувати"
-
-  modal.classList.add("hidden")
-  editingEventId = null
-  editingEventDate = null
-  modal._v0_view_mode = false
-}
-
-
-// Open full event modal
-function openFullModal(dateStr, eventData = null) {
-  const modal = document.getElementById("modal")
-  const title = document.getElementById("modal-title")
-  const titleInput = document.getElementById("ev-title")
-  const dateInput = document.getElementById("ev-date")
-  const typeInput = document.getElementById("ev-type")
-  const startInput = document.getElementById("ev-start")
-  const endInput = document.getElementById("ev-end")
-
-  // Перевіряємо чи це кастомна подія
-  const isCustom = eventData && (
-      (eventData.id && String(eventData.id).startsWith("custom_")) ||
-      (eventData.extendedProps && eventData.extendedProps.raw && eventData.extendedProps.raw.is_custom)
-  );
-
-  if (isCustom) {
-    title.textContent = "Редагувати подію"
-    titleInput.value = eventData.title || ""
-    dateInput.value = eventData.start ? eventData.start.split("T")[0] : dateStr
-    typeInput.value = (eventData.extendedProps && eventData.extendedProps.raw) ? eventData.extendedProps.raw.type : "other"
-    startInput.value = eventData.start ? eventData.start.substring(11, 16) : ""
-    endInput.value = eventData.end ? eventData.end.substring(11, 16) : ""
-    editingEventId = eventData.id
-  } else {
-    title.textContent = "Додати подію"
-    titleInput.value = ""
-    dateInput.value = dateStr
-    typeInput.value = "other"
-    startInput.value = ""
-    endInput.value = ""
-    editingEventId = null
-  }
-
-  editingEventDate = dateStr
-  modal.classList.remove("hidden")
-  titleInput.focus()
-}
-
-function openEditNameModal() {
-  if (!editingEventId) return
-  const event = allEvents.find((e) => e.id == editingEventId)
-  if (!event) return
-
-  const modal = document.getElementById("modal-edit-name")
-  const input = document.getElementById("edit-name-input")
-  input.value = event.title || ""
-  modal.classList.remove("hidden")
-  input.focus()
-}
-
-function openEditTimeModal() {
-  if (!editingEventId) return
-  const event = allEvents.find((e) => e.id == editingEventId)
-  if (!event) return
-
-  const modal = document.getElementById("modal-edit-time")
-  const startInput = document.getElementById("edit-time-start")
-  const endInput = document.getElementById("edit-time-end")
-  startInput.value = event.start ? event.start.substring(11, 16) : ""
-  endInput.value = event.end ? event.end.substring(11, 16) : ""
-  modal.classList.remove("hidden")
-  startInput.focus()
-}
-
-// Save event
-async function saveEvent() {
-  const titleInput = document.getElementById("ev-title")
-  const dateInput = document.getElementById("ev-date")
-  const typeInput = document.getElementById("ev-type")
-  const startInput = document.getElementById("ev-start")
-  const endInput = document.getElementById("ev-end")
-
-  if (!titleInput.value.trim()) {
-    alert("Будь ласка, введіть назву")
-    return
-  }
-
-  const eventData = {
-    // ВАЖЛИВО: Очищаємо ID від 'custom_' перед відправкою
-    id: getRawId(editingEventId),
-    group_name: currentGroup,
-    title: titleInput.value,
-    type: typeInput.value,
-    date: dateInput.value,
-    start_time: startInput.value,
-    end_time: endInput.value,
-  }
-
-  try {
-    const response = await fetch("/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(eventData),
-    })
-
-    if (response.ok) {
-      closeModal()
-      await fetchSchedule()
-      renderCalendar()
-    }
-  } catch (error) {
-    console.error("Error saving event:", error)
-  }
-}
-
-async function saveEventName() {
-  if (!editingEventId) return
-  const input = document.getElementById("edit-name-input")
-  if (!input.value.trim()) {
-    alert("Введіть назву")
-    return
-  }
-
-  const event = allEvents.find((e) => e.id == editingEventId)
-  const eventData = {
-    // ВАЖЛИВО: Очищаємо ID
-    id: getRawId(editingEventId),
-    group_name: currentGroup,
-    title: input.value,
-    type: event.extendedProps.raw.type,
-    date: event.start ? event.start.split("T")[0] : editingEventDate,
-    start_time: event.start ? event.start.substring(11, 16) : "",
-    end_time: event.end ? event.end.substring(11, 16) : "",
-  }
-
-  try {
-    const response = await fetch("/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(eventData),
-    })
-
-    if (response.ok) {
-      document.getElementById("modal-edit-name").classList.add("hidden")
-      await fetchSchedule()
-      renderCalendar()
-    }
-  } catch (error) {
-    console.error("Error saving event:", error)
-  }
-}
-
-async function saveEventTime() {
-  if (!editingEventId) return
-  const startInput = document.getElementById("edit-time-start")
-  const endInput = document.getElementById("edit-time-end")
-
-  const event = allEvents.find((e) => e.id == editingEventId)
-  const eventData = {
-    // ВАЖЛИВО: Очищаємо ID
-    id: getRawId(editingEventId),
-    group_name: currentGroup,
-    title: event.title,
-    type: event.extendedProps.raw.type,
-    date: event.start ? event.start.split("T")[0] : editingEventDate,
-    start_time: startInput.value,
-    end_time: endInput.value,
-  }
-
-  try {
-    const response = await fetch("/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(eventData),
-    })
-
-    if (response.ok) {
-      document.getElementById("modal-edit-time").classList.add("hidden")
-      await fetchSchedule()
-      renderCalendar()
-    }
-  } catch (error) {
-    console.error("Error saving event:", error)
-  }
-}
-
-// Delete event
-async function deleteEvent() {
-  if (!editingEventId || !confirm("Ви впевнені?")) return
-
-  // ВАЖЛИВО: Очищаємо ID перед відправкою у URL
-  const numericId = getRawId(editingEventId);
-
-  try {
-    const response = await fetch(`/api/event/${numericId}`, {
-      method: "DELETE",
-    })
-
-    if (response.ok) {
-      document.getElementById("event-context-menu").classList.add("hidden")
-      await fetchSchedule()
-      renderCalendar()
-    }
-  } catch (error) {
-    console.error("Error deleting event:", error)
-  }
-}
-
-// Setup event listeners
-function setupEventListeners() {
-  document.getElementById("today-btn").addEventListener("click", () => {
-    currentDate = new Date()
-    renderCalendar()
-  })
-
-  document.getElementById("prev-month").addEventListener("click", () => {
-    currentDate.setMonth(currentDate.getMonth() - 1)
-    renderCalendar()
-  })
-
-  document.getElementById("next-month").addEventListener("click", () => {
-    currentDate.setMonth(currentDate.getMonth() + 1)
-    renderCalendar()
-  })
-
-  document.getElementById("add-event-btn").addEventListener("click", () => {
-    document.getElementById("empty-context-menu").classList.add("hidden")
-    openFullModal(editingEventDate)
-  })
-
-  document.getElementById("edit-event-btn").addEventListener("click", () => {
-    document.getElementById("event-context-menu").classList.add("hidden")
-    openEditNameModal()
-  })
-
-  document.getElementById("edit-time-btn").addEventListener("click", () => {
-    document.getElementById("event-context-menu").classList.add("hidden")
-    openEditTimeModal()
-  })
-
-  document.getElementById("delete-event-btn").addEventListener("click", deleteEvent)
-
-  // Modal handlers
-  document.getElementById("save-ev").addEventListener("click", saveEvent)
-  document.getElementById("cancel-ev").addEventListener("click", closeModal)
-  document.querySelector(".modal-close").addEventListener("click", closeModal)
-  document.querySelector(".modal-overlay").addEventListener("click", closeModal)
-
-  document.getElementById("save-edit-name").addEventListener("click", saveEventName)
-  document.getElementById("cancel-edit-name").addEventListener("click", () => {
-    document.getElementById("modal-edit-name").classList.add("hidden")
-  })
-  document.querySelector("#modal-edit-name .modal-close").addEventListener("click", () => {
-    document.getElementById("modal-edit-name").classList.add("hidden")
-  })
-  document.querySelector("#modal-edit-name .modal-overlay").addEventListener("click", () => {
-    document.getElementById("modal-edit-name").classList.add("hidden")
-  })
-
-  document.getElementById("save-edit-time").addEventListener("click", saveEventTime)
-  document.getElementById("cancel-edit-time").addEventListener("click", () => {
-    document.getElementById("modal-edit-time").classList.add("hidden")
-  })
-  document.querySelector("#modal-edit-time .modal-close").addEventListener("click", () => {
-    document.getElementById("modal-edit-time").classList.add("hidden")
-  })
-  document.querySelector("#modal-edit-time .modal-overlay").addEventListener("click", () => {
-    document.getElementById("modal-edit-time").classList.add("hidden")
-  })
-}
-
-function setupSubgroupSwitcher() {
-  const btn1 = document.getElementById("subgroup-btn-1")
-  const btn2 = document.getElementById("subgroup-btn-2")
-
-  if(!btn1 || !btn2) return;
-
-  btn1.dataset.subgroup = btn1.dataset.subgroup || "1"
-  btn2.dataset.subgroup = btn2.dataset.subgroup || "2"
-
-  function switchHandler(e) {
-    const target = e.currentTarget
-    const sg = parseInt(target.dataset.subgroup, 10) || 1
-    currentSubgroup = sg
-    updateSubgroupUI()
-    saveUserSubgroup(sg).then(() => {
-      fetchSchedule().then(() => renderCalendar())
-    }).catch(() => {
-      fetchSchedule().then(() => renderCalendar())
-    })
-  }
-
-  btn1._v0_handler = switchHandler
-  btn2._v0_handler = switchHandler
-
-  // Clean up old listeners if any (naive approach)
-  // Cloning node is easiest way to wipe listeners without knowing them
-  const newBtn1 = btn1.cloneNode(true)
-  const newBtn2 = btn2.cloneNode(true)
-  btn1.parentNode.replaceChild(newBtn1, btn1)
-  btn2.parentNode.replaceChild(newBtn2, btn2)
-
-  newBtn1.addEventListener("click", switchHandler)
-  newBtn2.addEventListener("click", switchHandler)
-}
-
-
-function updateSubgroupUI() {
-  const btn1 = document.getElementById("subgroup-btn-1")
-  const btn2 = document.getElementById("subgroup-btn-2")
-
-  if(!btn1 || !btn2) return;
-
-  if (currentSubgroup === 1) {
-    btn1.classList.add("subgroup-active")
-    btn2.classList.remove("subgroup-active")
-  } else {
-    btn1.classList.remove("subgroup-active")
-    btn2.classList.add("subgroup-active")
-  }
-}
-
-async function saveUserSubgroup(subgroup) {
-  try {
-    const response = await fetch("/api/user/subgroup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subgroup })
-    })
-    if (!response.ok) {
-      console.error("[v0] Failed to save subgroup")
-      return false
-    }
-    const data = await response.json()
-    if (data && data.success) {
-      window.CURRENT_USER_SUBGROUP = data.subgroup
-      return true
-    }
-    return false
-  } catch (error) {
-    console.error("[v0] Error saving subgroup:", error)
-    return false
-  }
-}
-
-
-// Initialize on load
-if (currentGroup) {
-  initCalendar()
-} else {
-  console.log("Waiting for group selection...")
-}
-
-
-function openViewModal(event) {
-  const modal = document.getElementById("modal")
-  const title = document.getElementById("modal-title")
-  const titleInput = document.getElementById("ev-title")
-  const dateInput = document.getElementById("ev-date")
-  const typeInput = document.getElementById("ev-type")
-  const startInput = document.getElementById("ev-start")
-  const endInput = document.getElementById("ev-end")
-  const saveBtn = document.getElementById("save-ev")
-  const cancelBtn = document.getElementById("cancel-ev")
-
-  title.textContent = "Інформація про пару"
-  titleInput.value = event.title || ""
-  dateInput.value = event.start ? event.start.split("T")[0] : ""
-  typeInput.value = event.extendedProps && event.extendedProps.type ? event.extendedProps.type : "other"
-  startInput.value = event.start ? event.start.substring(11,16) : ""
-  endInput.value = event.end ? event.end.substring(11,16) : ""
-
-  titleInput.setAttribute("disabled", "disabled")
-  dateInput.setAttribute("disabled", "disabled")
-  typeInput.setAttribute("disabled", "disabled")
-  startInput.setAttribute("disabled", "disabled")
-  endInput.setAttribute("disabled", "disabled")
-
-  saveBtn.style.display = "none"
-  cancelBtn.textContent = "Закрити"
-
-  modal._v0_view_mode = true
-  modal.classList.remove("hidden")
-}
+document.addEventListener('DOMContentLoaded', () => {
+    const calendar = document.getElementById('calendar');
+    const monthLabel = document.getElementById('month-label');
+    const prevMonthBtn = document.getElementById('prev-month');
+    const nextMonthBtn = document.getElementById('next-month');
+    const todayBtn = document.getElementById('today-btn');
+    const subgroup1Btn = document.getElementById('subgroup-btn-1');
+    const subgroup2Btn = document.getElementById('subgroup-btn-2');
+
+    const eventModal = document.getElementById('modal');
+    const dayDetailModal = document.getElementById('day-detail-modal');
+    const eventContextMenu = document.getElementById('event-context-menu');
+    const emptyContextMenu = document.getElementById('empty-context-menu');
+
+    let currentDate = new Date();
+    let currentSubgroup = window.CURRENT_USER_SUBGROUP || 1;
+    let allEvents = [];
+    let editingEventId = null;
+    let editingEventDate = null;
+    
+    const MAX_EVENTS_VISIBLE = 3;
+
+    const fetchSchedule = async () => {
+        try {
+            const group = window.CURRENT_USER_GROUP;
+            if (!group) return;
+            const response = await fetch(`/api/schedule/${group}?subgroup=${currentSubgroup}`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const data = await response.json();
+            allEvents = data.events || [];
+            renderCalendar();
+        } catch (error) {
+            console.error("Error fetching schedule:", error);
+        }
+    };
+
+    const renderCalendar = () => {
+        calendar.innerHTML = '';
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        const monthName = currentDate.toLocaleString("uk-UA", { month: "long", year: "numeric" });
+        monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+        const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const todayStr = new Date().toDateString();
+
+        for (let i = 0; i < firstDayIndex; i++) {
+            calendar.insertAdjacentHTML('beforeend', '<div class="calendar-day empty"></div>');
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            const dateStr = date.toISOString().split('T')[0];
+            const dayCell = document.createElement('div');
+            dayCell.className = `calendar-day ${date.toDateString() === todayStr ? 'today' : ''}`;
+            dayCell.dataset.date = dateStr;
+
+            dayCell.innerHTML = `<div class="day-number">${day}</div><div class="day-events"></div>`;
+            
+            const dayEventsContainer = dayCell.querySelector('.day-events');
+            const dayEvents = allEvents.filter(e => e.start && new Date(e.start).toDateString() === date.toDateString())
+                                     .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+
+            dayEvents.slice(0, MAX_EVENTS_VISIBLE).forEach(event => {
+                dayEventsContainer.appendChild(createEventElement(event));
+            });
+
+            if (dayEvents.length > MAX_EVENTS_VISIBLE) {
+                const moreLink = document.createElement('div');
+                moreLink.className = 'day-more-link';
+                moreLink.textContent = `+${dayEvents.length - MAX_EVENTS_VISIBLE} більше`;
+                moreLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openDayDetailModal(date, dayEvents);
+                });
+                dayEventsContainer.appendChild(moreLink);
+            }
+
+            dayCell.addEventListener('contextmenu', (e) => {
+                if (e.target.closest('.day-event')) return;
+                e.preventDefault();
+                showContextMenu('empty', dateStr, null, e);
+            });
+            
+            calendar.appendChild(dayCell);
+        }
+    };
+
+    const createEventElement = (event) => {
+        const el = document.createElement('div');
+        const typeClass = event.className && event.className.length > 0 ? event.className[0] : 'event-other';
+        el.className = `day-event ${typeClass}`;
+        el.dataset.eventId = event.id;
+        
+        const title = event.title || "Подія";
+        const startTime = event.start ? new Date(event.start).toTimeString().substring(0, 5) : "";
+        el.textContent = startTime ? `${startTime} ${title}` : title;
+
+        el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showContextMenu('event', null, event, e);
+        });
+        
+        return el;
+    };
+
+    const showContextMenu = (type, dateStr, event, mouseEvent) => {
+        hideContextMenus();
+        let menu;
+        if (type === 'event') {
+            menu = eventContextMenu;
+            editingEventId = event.id;
+        } else {
+            menu = emptyContextMenu;
+            editingEventDate = dateStr;
+        }
+        menu.style.left = `${mouseEvent.clientX}px`;
+        menu.style.top = `${mouseEvent.clientY}px`;
+        menu.classList.remove('hidden');
+    };
+
+    const hideContextMenus = () => {
+        eventContextMenu.classList.add('hidden');
+        emptyContextMenu.classList.add('hidden');
+    };
+
+    const openDayDetailModal = (date, events) => {
+        const modalTitle = dayDetailModal.querySelector('#day-detail-title');
+        const modalList = dayDetailModal.querySelector('#day-detail-list');
+        
+        modalTitle.textContent = `Події на ${date.toLocaleDateString('uk-UA')}`;
+        modalList.innerHTML = '';
+        
+        events.forEach(event => {
+            modalList.appendChild(createEventElement(event));
+        });
+        
+        dayDetailModal.classList.remove('hidden');
+    };
+
+    const openEventModal = (event = null) => {
+        const form = document.getElementById('event-form');
+        form.reset();
+        editingEventId = null;
+
+        if (event) {
+            editingEventId = event.id.replace('custom_', '');
+            document.getElementById('modal-title').textContent = 'Редагувати подію';
+            document.getElementById('ev-title').value = event.title;
+            document.getElementById('ev-date').value = event.start.split('T')[0];
+            document.getElementById('ev-start').value = event.start.split('T')[1].substring(0,5);
+            document.getElementById('ev-end').value = event.end.split('T')[1].substring(0,5);
+        } else {
+            document.getElementById('modal-title').textContent = 'Нова подія';
+            document.getElementById('ev-date').value = editingEventDate;
+        }
+        eventModal.classList.remove('hidden');
+    };
+
+    const saveEvent = async (e) => {
+        e.preventDefault();
+        const eventData = {
+            id: editingEventId,
+            title: document.getElementById('ev-title').value,
+            date: document.getElementById('ev-date').value,
+            start_time: document.getElementById('ev-start').value,
+            end_time: document.getElementById('ev-end').value,
+            group_name: window.CURRENT_USER_GROUP,
+            type: 'other'
+        };
+
+        try {
+            const response = await fetch("/api/event", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(eventData),
+            });
+            if (response.ok) {
+                eventModal.classList.add('hidden');
+                fetchSchedule();
+            }
+        } catch (error) {
+            console.error("Save error:", error);
+        }
+    };
+
+    const deleteEvent = async () => {
+        if (!editingEventId || !confirm("Видалити подію?")) return;
+        try {
+            const response = await fetch(`/api/event/${editingEventId}`, { method: "DELETE" });
+            if (response.ok) {
+                fetchSchedule();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const setupEventListeners = () => {
+        prevMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); });
+        nextMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); });
+        todayBtn.addEventListener('click', () => { currentDate = new Date(); renderCalendar(); });
+        
+        subgroup1Btn.addEventListener('click', () => switchSubgroup(1));
+        subgroup2Btn.addEventListener('click', () => switchSubgroup(2));
+
+        document.addEventListener('click', hideContextMenus);
+        
+        // Modals
+        dayDetailModal.querySelector('#day-detail-close').addEventListener('click', () => dayDetailModal.classList.add('hidden'));
+        dayDetailModal.addEventListener('click', (e) => { if (e.target === dayDetailModal) dayDetailModal.classList.add('hidden'); });
+        eventModal.querySelector('#cancel-ev').addEventListener('click', () => eventModal.classList.add('hidden'));
+        eventModal.addEventListener('click', (e) => { if (e.target === eventModal) eventModal.classList.add('hidden'); });
+        document.getElementById('event-form').addEventListener('submit', saveEvent);
+
+        // Context Menus
+        document.getElementById('add-event-btn').addEventListener('click', () => openEventModal());
+        document.getElementById('edit-event-btn').addEventListener('click', () => {
+            const event = allEvents.find(e => e.id === editingEventId);
+            openEventModal(event);
+        });
+        document.getElementById('delete-event-btn').addEventListener('click', deleteEvent);
+    };
+
+    const switchSubgroup = (subgroup) => {
+        if (currentSubgroup === subgroup) return;
+        currentSubgroup = subgroup;
+        updateSubgroupUI();
+        fetchSchedule();
+    };
+    
+    const updateSubgroupUI = () => {
+        if (currentSubgroup == 1) {
+            subgroup1Btn.classList.add('active');
+            subgroup2Btn.classList.remove('active');
+        } else {
+            subgroup1Btn.classList.remove('active');
+            subgroup2Btn.classList.add('active');
+        }
+    };
+
+    setupEventListeners();
+    fetchSchedule();
+});

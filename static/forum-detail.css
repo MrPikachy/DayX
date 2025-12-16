@@ -1,0 +1,103 @@
+/* Forum Detail Page Specific Styles */
+
+.forum-post {
+    padding-bottom: 2rem;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--secondary-gray);
+}
+
+.post-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+}
+
+.post-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin-bottom: 1.5rem;
+}
+.post-meta a {
+    color: var(--primary-blue);
+    text-decoration: none;
+}
+.post-meta .badge {
+    background: #2a2a2a;
+    color: #9ca3af;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.post-description {
+    line-height: 1.7;
+    white-space: pre-wrap;
+    font-size: 1.1rem;
+}
+
+.comments-section h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--secondary-gray);
+}
+
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.comment-card {
+    background: #2a2a2a;
+    border: 1px solid var(--secondary-gray);
+    border-radius: 15px;
+    padding: 1.5rem;
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.comment-author {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.comment-time {
+    font-size: 0.8rem;
+    color: #9ca3af;
+}
+
+.comment-body {
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.no-comments {
+    color: #9ca3af;
+    text-align: center;
+    padding: 2rem;
+}
+
+.add-comment-section {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--secondary-gray);
+}
+.add-comment-section h4 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+.add-comment-actions {
+    text-align: right;
+    margin-top: 1rem;
+}
