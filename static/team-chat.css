@@ -1,0 +1,68 @@
+/* --- Стилі для медіа в чаті --- */
+  .message-attachment-wrapper {
+    margin-left: 46px; /* Відступ під аватаром */
+    margin-top: 8px;
+  }
+
+  /* Картинки */
+  .chat-image-preview {
+    max-width: 300px; /* Обмеження ширини */
+    max-height: 300px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .chat-image-preview:hover {
+    filter: brightness(0.95);
+  }
+
+  /* Відео */
+  .chat-video-preview {
+    max-width: 350px;
+    border-radius: 8px;
+  }
+
+  /* Файли (документи, архіви) */
+  .file-attachment {
+    display: inline-flex;
+    align-items: center;
+    background: #f0f2f5; /* Світло-сірий фон як у Telegram/FB */
+    padding: 10px 14px;
+    border-radius: 8px;
+    text-decoration: none;
+    max-width: 300px;
+    border: 1px solid #dadce0;
+    transition: background 0.2s;
+  }
+
+  .file-attachment:hover {
+    background: #e4e6eb;
+  }
+
+  .file-icon {
+    font-size: 24px;
+    margin-right: 10px;
+  }
+
+  .file-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .file-name {
+    color: #3c4043;
+    font-weight: 500;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-download-text {
+    color: #1f71e8;
+    font-size: 11px;
+    margin-top: 2px;
+  }
