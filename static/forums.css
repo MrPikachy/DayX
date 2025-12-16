@@ -96,3 +96,127 @@
 .form-group-inline input {
     width: auto;
 }
+
+
+/* Фіксація Textarea (щоб не розтягувалось) */
+.textarea-fixed {
+    resize: none;
+    height: 120px;
+}
+
+/* --- Стилі для Toggle Switch (Перемикач) --- */
+.form-group-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 1.5rem 0;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05); /* Легка підкладка */
+    border-radius: 8px;
+    border: 1px solid var(--secondary-gray); /* Рамка в стиль input */
+}
+
+.toggle-label {
+    font-weight: 500;
+    color: #ddd;
+}
+
+/* Контейнер перемикача */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+/* Ховаємо стандартний чекбокс */
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* Слайдер */
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #444;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+/* Кружечок всередині */
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+/* Стан "Увімкнено" */
+input:checked + .slider {
+    background-color: var(--primary-blue);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--primary-blue);
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+/* Аватарки та автор у списку форумів */
+.author-block {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Стиль для справжньої картинки */
+.avatar-xs {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 8px;
+    border: 1px solid #333;
+}
+
+/* Стиль для генерованої літери (заглушка) */
+.avatar-placeholder-xs {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: #3b5bdb; /* Ваш основний колір */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem; /* Розмір літери */
+    font-weight: 600;
+    margin-right: 8px;
+    text-transform: uppercase;
+}
+
+/* Вирівнювання блоку автора */
+.author-block {
+    display: flex;
+    align-items: center;
+    font-weight: 500;
+    color: #e5e5e5;
+}
+
+.separator {
+    margin: 0 0.3rem;
+    color: #555;
+}

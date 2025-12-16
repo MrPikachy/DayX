@@ -428,3 +428,695 @@ main {
 .context-menu-item.danger:hover {
   background: var(--danger-red);
 }
+
+/* Шар-підкладка (темний фон з розмиттям) */
+    .notifications-modal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(5px);
+        z-index: 1; /* Ставимо низький рівень */
+    }
+
+    /* Сама панель з повідомленнями */
+    .notifications-modal-content {
+        position: relative;
+        width: 400px;
+        height: 100%;
+        background: white; /* Або var(--card-bg) для темної теми */
+        color: black;      /* Або білий для темної теми */
+        box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        z-index: 10; /* ВАЖЛИВО: цей шар має бути вищим за overlay */
+    }
+
+/* --- Notifications Overlay & Animation --- */
+/* --- Notifications System --- */
+
+/* Контейнер модального вікна (невидимий, поки не активний) */
+/* --- Notifications System Fixed --- */
+
+/* Контейнер модального вікна */
+.notifications-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2000;
+
+    /* Стан "Закрито" */
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none; /* Щоб не перекривало кліки, коли прозоре */
+
+    transition: visibility 0.3s, opacity 0.3s ease;
+    display: flex; /* Важливо: завжди flex, щоб працювала верстка всередині */
+    justify-content: flex-end; /* Притискаємо до правого краю */
+}
+
+/* Прибираємо конфлікт з класом .hidden з глобальних стилів */
+.notifications-modal.hidden {
+    display: flex !important; /* Перевизначаємо display: none */
+    visibility: hidden;
+}
+
+/* Стан "Відкрито" */
+.notifications-modal.active {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Темний фон */
+.notifications-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1;
+}
+
+/* Панель контенту (виїжджає) */
+.notifications-modal-content {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    height: 100%;
+    background-color: #1a1a1a;
+    border-left: 1px solid #333;
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+
+    /* Початковий зсув за екран */
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Коли active, повертаємо панель на місце */
+.notifications-modal.active .notifications-modal-content {
+    transform: translateX(0);
+}
+
+/* Стилі списку */
+.notifications-modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #1a1a1a;
+}
+
+.notifications-modal-header h2 {
+    color: #fff;
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.notifications-modal-close {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 5px;
+}
+.notifications-modal-close:hover { color: #fff; }
+
+.notifications-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+}
+
+/* Елемент повідомлення */
+.notification-item {
+    padding: 1rem;
+    border-bottom: 1px solid #2a2a2a;
+    transition: all 0.3s ease;
+    background-color: #1a1a1a;
+}
+
+.notification-item:hover {
+    background-color: #222;
+}
+
+/* Непрочитані */
+.notification-item.unread {
+    background-color: rgba(50, 77, 156, 0.15); /* Трохи синього фону */
+    border-left: 3px solid var(--primary-blue);
+}
+
+/* Прочитані (сіріші) */
+.notification-item.read {
+    opacity: 0.5;
+    background-color: #1a1a1a;
+    border-left: 3px solid transparent;
+}
+.notification-item.read .notification-title {
+    color: #888;
+}
+
+/* Заголовки */
+.notif-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.3rem;
+}
+.notification-title {
+    font-weight: 600;
+    color: #fff;
+    font-size: 0.95rem;
+}
+.notification-time {
+    font-size: 0.75rem;
+    color: #666;
+}
+.notification-message {
+    font-size: 0.85rem;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+/* Кнопки дій */
+.notif-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.notif-btn {
+    background: transparent;
+    border: 1px solid #444;
+    color: #aaa;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+}
+
+.notif-btn:hover {
+    background-color: #333;
+    color: #fff;
+}
+
+.notif-btn.read-btn:hover {
+    border-color: var(--primary-blue);
+    color: var(--primary-blue);
+}
+
+.notif-btn.delete-btn:hover {
+    border-color: var(--danger-red);
+    color: var(--danger-red);
+}
+
+.notifications-empty {
+    text-align: center;
+    padding: 3rem;
+    color: #555;
+    font-size: 0.9rem;
+}
+
+.auth-page-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 80px); /* Висота екрану мінус навбар */
+    padding: 2rem;
+}
+
+.auth-container-split {
+    display: flex;
+    width: 1100px; /* Збільшив ширину */
+    max-width: 95%;
+    min-height: 600px; /* Додав фіксовану висоту, щоб вікно було великим */
+    background-color: var(--card-bg);
+    border: 1px solid var(--secondary-gray);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+
+/* Ліва частина (Бренд) */
+.brand-section {
+    flex: 1;
+    background: linear-gradient(135deg, #1f2937 0%, #000000 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem;
+    text-align: center;
+    border-right: 1px solid var(--secondary-gray);
+}
+
+.brand-logo-img {
+    width: 100px;
+    height: 100px;
+    margin-bottom: 1.5rem;
+    stroke: var(--primary-blue);
+}
+
+.brand-text {
+    font-size: 3rem; /* Збільшив шрифт бренду */
+    font-weight: 800;
+    color: white;
+    letter-spacing: -1px;
+}
+
+.brand-slogan {
+    color: #9ca3af;
+    margin-top: 15px;
+    font-size: 1.1rem;
+}
+
+/* Права частина (Форма) */
+.auth-card {
+    flex: 1;
+    padding: 4rem; /* Більше відступів всередині */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background-color: var(--card-bg);
+    border: none;
+    box-shadow: none;
+}
+
+.auth-header-title {
+    font-size: 2rem; /* Більший заголовок */
+    margin-bottom: 2rem;
+    text-align: center;
+    color: white;
+    font-weight: 700;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem; /* Більші відступи між полями */
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    flex: 1;
+}
+
+.form-group label {
+    font-size: 0.95rem;
+    color: #ccc;
+    font-weight: 500;
+}
+
+/* Перевизначення інпутів для впевненості */
+.form-input {
+    background-color: #222;
+    border: 1px solid #444;
+    color: white;
+    padding: 14px; /* Більші поля вводу */
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 3px rgba(50, 77, 156, 0.4);
+}
+
+.form-input::placeholder {
+    color: #555;
+}
+
+.btn-full {
+    width: 100%;
+    margin-top: 1.5rem;
+    padding: 14px;
+    font-size: 1.1rem;
+}
+
+.auth-footer {
+    margin-top: 2rem;
+    text-align: center;
+    color: #888;
+    font-size: 0.95rem;
+}
+
+.auth-footer a {
+    color: var(--primary-blue);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+    .auth-container-split {
+        flex-direction: column;
+        width: 100%;
+        min-height: auto;
+    }
+
+    .brand-section {
+        padding: 2rem;
+        border-right: none;
+        border-bottom: 1px solid var(--secondary-gray);
+    }
+
+    .auth-card {
+        padding: 2rem;
+    }
+}
+
+ /* Base navbar styles overrides for black theme */
+    .navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 2rem;
+        background-color: #000; /* Ensure black background */
+        border-bottom: 1px solid #333;
+    }
+
+    .nav-left, .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .nav-brand-link {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+    }
+
+    .nav-link {
+        color: #aaa;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s;
+    }
+
+    .nav-link:hover {
+        color: white;
+    }
+
+    .nav-separator {
+        width: 1px;
+        height: 24px;
+        background-color: #333;
+        margin: 0 0.5rem;
+    }
+
+    .icon-btn {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        position: relative;
+        padding: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .icon-btn:hover {
+        color: #3b5bdb;
+    }
+
+    .notif-badge {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        background-color: #ef4444;
+        color: white;
+        font-size: 0.7rem;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
+
+    .user-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background-color: #1f2937;
+        padding: 4px 12px 4px 4px;
+        border-radius: 20px;
+        text-decoration: none;
+        color: white;
+        transition: background 0.2s;
+    }
+
+    .user-pill:hover {
+        background-color: #374151;
+    }
+
+    .nav-avatar, .nav-avatar-placeholder {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .nav-avatar-placeholder {
+        background-color: #3b5bdb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+
+    .logout-link {
+        color: #ef4444;
+        display: flex;
+        align-items: center;
+    }
+
+    .nav-btn-pill {
+        padding: 0.5rem 1.2rem;
+        border-radius: 20px;
+        text-decoration: none;
+        font-weight: 600;
+        color: white;
+        border: 1px solid #333;
+        transition: all 0.2s;
+    }
+
+    .nav-btn-pill.primary {
+        background-color: #3b5bdb;
+        border-color: #3b5bdb;
+    }
+
+    .nav-btn-pill:hover {
+        opacity: 0.9;
+    }
+
+#notif-counter {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: var(--danger-red);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: bold;
+    min-width: 18px;
+    height: 18px;
+    padding: 2px;
+    border-radius: 50%;
+    display: none; /* JS покаже, коли будуть дані */
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--bg-color); /* Обводка в колір фону для чіткості */
+}
+
+
+/* ========================================= */
+/* MOBILE RESPONSIVENESS (Phone)        */
+/* ========================================= */
+
+@media (max-width: 768px) {
+
+    /* 1. Глобальні відступи */
+    /* Прибираємо великі відступи по краях, щоб контент вліз */
+    .app-header, .content-container {
+        margin: 1rem 0.5rem; /* Зверху/знизу 1rem, збоку 0.5rem */
+        padding: 1rem;       /* Менше внутрішніх відступів */
+    }
+
+    main {
+        padding: 0; /* Прибираємо паддінг у main */
+    }
+
+    /* 2. Навігація (Меню) */
+    /* Робимо меню вертикальним або компактним */
+    nav.navbar {
+        flex-direction: column; /* Елементи стають один під одним */
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    .nav-right {
+        width: 100%;
+        justify-content: center; /* Центруємо посилання */
+        flex-wrap: wrap; /* Дозволяємо перенос, якщо не влазять */
+        gap: 15px;
+    }
+
+    .nav-brand-link {
+        margin-bottom: 0.5rem;
+    }
+
+    /* Ховаємо довгі тексти в меню, залишаємо іконки (опціонально) */
+    /* Або просто зменшуємо шрифт */
+    .nav-link {
+        font-size: 0.9rem;
+    }
+
+    /* 3. Авторизація / Реєстрація */
+    /* Розбиваємо "спліт" екран на стовпчик */
+    .auth-container-split {
+        flex-direction: column;
+        width: 100%;
+        height: auto;
+        min-height: auto;
+        box-shadow: none; /* Прибираємо важку тінь */
+        border: none;
+    }
+
+    .brand-section {
+        padding: 2rem 1rem;
+        border-right: none;
+        border-bottom: 1px solid #333;
+    }
+
+    .auth-card {
+        padding: 2rem 1rem;
+    }
+
+    .auth-page-wrapper {
+        padding: 0; /* Прибираємо відступи сторінки */
+        align-items: flex-start; /* Підтягуємо вгору */
+    }
+
+    /* 4. Заголовки сторінок */
+    /* Кнопка "Створити" має падати під заголовок */
+    .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .header-actions {
+        width: 100%;
+        display: flex;
+        justify-content: stretch;
+    }
+
+    .header-actions .btn {
+        flex: 1; /* Кнопка розтягується на всю ширину */
+    }
+
+    /* 5. Модальні вікна */
+    .modal-card {
+        width: 95%; /* Майже на весь екран */
+        padding: 1.5rem;
+        margin: 10px;
+    }
+
+    /* 6. Сповіщення */
+    .notifications-modal-content {
+        width: 100%; /* На весь екран */
+        max-width: none;
+    }
+
+    /* 7. Форуми та списки */
+    .forum-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .forum-card-footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .forum-stats {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    /* 8. Форми */
+    .form-row {
+        flex-direction: column; /* Ім'я та Прізвище одне під одним */
+    }
+}
+
+/* Блок кнопок запрошення */
+.invite-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+/* Кнопка "Прийняти" (Зелена) */
+.notif-btn.accept-btn {
+    background-color: rgba(22, 101, 52, 0.2);
+    border: 1px solid #166534;
+    color: #4ade80;
+    flex: 1; /* Розтягується */
+    justify-content: center;
+    padding: 6px;
+    font-weight: 600;
+}
+
+.notif-btn.accept-btn:hover {
+    background-color: #166534;
+    color: white;
+}
+
+/* Кнопка "Відхилити" (Червона) */
+.notif-btn.decline-btn {
+    background-color: rgba(127, 29, 29, 0.2);
+    border: 1px solid #7f1d1d;
+    color: #f87171;
+    flex: 1;
+    justify-content: center;
+    padding: 6px;
+}
+
+.notif-btn.decline-btn:hover {
+    background-color: #991b1b;
+    color: white;
+}

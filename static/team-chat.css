@@ -1,22 +1,23 @@
+/* Container Layout */
 .team-chat-container {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 200px);
+    /* Висота: 100vh - (висота навбару + висота заголовка чату + відступи) */
+    height: calc(100vh - 180px); 
     background-color: var(--card-bg);
-    border-radius: 15px;
+    border-radius: 20px;
     overflow: hidden;
     border: 1px solid var(--secondary-gray);
+    margin-bottom: 20px;
 }
 
-.team-chat-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    background-color: #111;
-    border-bottom: 1px solid var(--secondary-gray);
+/* Header tweaks in app-header handled by base style, but buttons here */
+.app-header .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
 }
 
+/* Messages Area */
 .team-messages {
     flex: 1;
     overflow-y: auto;
@@ -24,6 +25,7 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    background-color: #050505; /* Дуже темний фон для повідомлень */
 }
 
 .message {
@@ -32,6 +34,7 @@
     animation: fadeIn 0.3s ease-out;
 }
 
+/* Avatar */
 .message-avatar {
     width: 40px;
     height: 40px;
@@ -40,154 +43,250 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
+    font-weight: 700;
+    color: white;
     flex-shrink: 0;
+    overflow: hidden;
 }
+
 .message-avatar img {
     width: 100%;
     height: 100%;
-    border-radius: 50%;
     object-fit: cover;
 }
 
+/* Content */
 .message-content {
-    max-width: 75%;
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
 }
 
 .message-author {
     font-weight: 600;
-    margin-bottom: 0.25rem;
+    margin-bottom: 4px;
     color: var(--primary-blue);
+    font-size: 0.9rem;
 }
 
 .message-text {
     background-color: #2a2a2a;
-    padding: 0.8rem 1rem;
-    border-radius: 0 15px 15px 15px;
+    padding: 10px 14px;
+    border-radius: 0 12px 12px 12px;
+    color: #e0e0e0;
+    line-height: 1.5;
     word-wrap: break-word;
+    border: 1px solid #333;
 }
 
 .message-time {
-    font-size: 0.75rem;
-    color: #9ca3af;
-    margin-top: 0.5rem;
-}
-
-.team-input-area {
-    display: flex;
-    gap: 1rem;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--secondary-gray);
-    background-color: #111;
-}
-
-/* Members Modal */
-.members-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-.member-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.member-info {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-.member-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background-color: var(--primary-blue);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-}
-.member-avatar img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-}
-.btn-remove-member {
-    background: none;
-    border: none;
-    color: var(--danger-red);
-    cursor: pointer;
-    transition: color 0.2s;
-}
-.btn-remove-member:hover {
-    color: #ff6b6b;
+    font-size: 0.7rem;
+    color: #666;
+    margin-top: 4px;
+    align-self: flex-start;
 }
 
 /* Attachments */
 .message-attachment-wrapper {
-    margin-top: 0.5rem;
+    margin-top: 8px;
 }
 
 .chat-image-preview {
-    max-width: 320px;
-    max-height: 320px;
-    border-radius: 12px;
-    border: 1px solid var(--secondary-gray);
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.chat-image-preview:hover {
-    transform: scale(1.03);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    max-width: 300px;
+    border-radius: 8px;
+    border: 1px solid #444;
 }
 
 .chat-video-preview {
-    max-width: 350px;
-    border-radius: 12px;
-    border: 1px solid var(--secondary-gray);
+    max-width: 320px;
+    border-radius: 8px;
 }
 
 .file-attachment {
     display: inline-flex;
     align-items: center;
-    background: #2a2a2a;
-    padding: 12px 16px;
-    border-radius: 12px;
+    background-color: #1f2937;
+    padding: 10px 14px;
+    border-radius: 8px;
     text-decoration: none;
-    max-width: 320px;
-    border: 1px solid var(--secondary-gray);
-    transition: background-color 0.2s, border-color 0.2s;
+    border: 1px solid #374151;
+    transition: background 0.2s;
 }
 
 .file-attachment:hover {
-    background-color: #333;
-    border-color: var(--primary-blue);
+    background-color: #374151;
 }
 
 .file-attachment i {
-    margin-right: 12px;
+    margin-right: 10px;
     color: var(--primary-blue);
 }
 
 .file-info {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
 }
 
 .file-name {
-    color: var(--text-color);
+    color: #fff;
+    font-size: 0.9rem;
     font-weight: 500;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .file-download-text {
     color: #9ca3af;
-    font-size: 12px;
-    margin-top: 4px;
+    font-size: 0.75rem;
+}
+
+/* Input Area */
+.team-input-area {
+    background-color: #1a1a1a;
+    border-top: 1px solid var(--secondary-gray);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.upload-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--primary-blue);
+    margin-bottom: 5px;
+    border: 1px solid var(--primary-blue);
+}
+.upload-preview.hidden {
+    display: none;
+}
+.btn-icon-small {
+    background: none;
+    border: none;
+    color: #aaa;
+    cursor: pointer;
+}
+
+.input-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.input-row .form-input {
+    flex: 1;
+    background-color: #0a0a0a;
+    border: 1px solid #333;
+    padding: 12px;
+}
+
+.icon-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background-color: #2a2a2a;
+    color: #aaa;
+    border: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-btn:hover {
+    color: white;
+    background-color: #333;
+}
+
+#send-btn {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Members Modal List */
+.members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 15px 0;
+    padding-right: 5px; /* Щоб скрол не перекривав контент */
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid transparent; /* Для плавності ховера */
+    background-color: rgba(255, 255, 255, 0.02); /* Дуже легкий фон */
+    transition: background 0.2s ease;
+}
+
+.member-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Відступ між аватаркою та ім'ям */
+}
+
+/* Контейнер для аватарки */
+.member-avatar {
+    width: 40px;          /* Фіксована ширина */
+    height: 40px;         /* Фіксована висота */
+    border-radius: 50%;   /* Робимо коло */
+    background-color: var(--primary-blue); /* Фон для ініціалів, якщо немає фото */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 700;
+    flex-shrink: 0;       /* Забороняємо сплющувати аватарку */
+    overflow: hidden;     /* Обрізаємо фото, що вилазять за краї */
+    border: 1px solid #444; /* Тонка рамка */
+}
+
+/* Саме зображення всередині */
+.member-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;    /* Фото заповнює коло без спотворень */
+    display: block;
+}
+
+/* Ім'я користувача */
+.member-info span {
+    color: #e2e8f0;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+/* Кнопка видалення */
+.icon-btn-danger {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.icon-btn-danger:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #ff6b6b;
 }

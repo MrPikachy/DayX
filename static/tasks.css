@@ -36,6 +36,13 @@
     gap: 2rem;
 }
 
+/* Адаптивність для мобільних: стовпчики в один ряд */
+@media (max-width: 768px) {
+    .kanban-board {
+        grid-template-columns: 1fr;
+    }
+}
+
 .kanban-column h3 {
     font-size: 1.2rem;
     font-weight: 700;
@@ -52,6 +59,12 @@
 }
 
 .task-card {
+    /* Додаємо flex, щоб чекбокс і текст були поруч */
+    display: flex;
+    align-items: flex-start; /* Вирівнювання по верху */
+    gap: 12px;
+
+    /* Старі стилі залишаємо */
     background: #2a2a2a;
     border: 1px solid var(--secondary-gray);
     border-radius: 10px;
@@ -71,18 +84,21 @@
 }
 .task-card.completed .task-title {
     text-decoration: line-through;
+    color: #888;
 }
 
 .task-title {
     font-weight: 600;
     font-size: 1.1rem;
     margin-bottom: 0.5rem;
+    color: #fff;
 }
 
 .task-description {
     color: #b0b0b0;
     font-size: 0.9rem;
     margin-bottom: 1rem;
+    line-height: 1.4;
 }
 
 .task-deadline {
@@ -92,4 +108,88 @@
 .task-deadline.urgent {
     color: var(--danger-red);
     font-weight: 600;
+}
+
+/* Стилі для форми модального вікна (як у форумах) */
+.form-group {
+    margin-bottom: 1.2rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #ccc;
+    font-weight: 500;
+}
+
+/* Фіксована висота для textarea */
+.textarea-fixed {
+    resize: none;
+    height: 120px;
+}
+
+.form-input {
+    width: 100%;
+    background-color: #222;
+    border: 1px solid #444;
+    color: white;
+    padding: 10px;
+    border-radius: 8px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+}
+
+
+/* Обгортка для текстової частини задачі */
+.task-content-wrapper {
+    flex: 1; /* Займає всю доступну ширину */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Стиль самого чекбокса (кружечок) */
+.task-checkbox {
+    min-width: 22px;
+    min-height: 22px;
+    width: 22px;
+    height: 22px;
+    border: 2px solid #555;
+    border-radius: 50%; /* Робимо круглим */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin-top: 2px; /* Трохи вирівняти відносно заголовка */
+    background: transparent;
+}
+
+.task-checkbox:hover {
+    border-color: var(--primary-blue);
+    background: rgba(59, 91, 219, 0.1);
+}
+
+/* Стан "Виконано" для чекбокса */
+.task-checkbox.checked {
+    background-color: var(--primary-blue);
+    border-color: var(--primary-blue);
+}
+
+/* Галочка всередині (спочатку прихована) */
+.task-checkbox i {
+    color: white;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Показуємо галочку коли checked */
+.task-checkbox.checked i {
+    opacity: 1;
+    transform: scale(1);
 }

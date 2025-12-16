@@ -101,3 +101,110 @@
     text-align: right;
     margin-top: 1rem;
 }
+
+
+    /* Стилі для секції коментарів */
+    .add-comment-section {
+        background-color: #222; /* Трохи світліший фон для блоку вводу */
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-top: 2rem;
+        border: 1px solid var(--secondary-gray);
+    }
+
+    .section-title {
+        margin-bottom: 1rem;
+        color: #fff;
+        font-size: 1.1rem;
+    }
+
+    /* Фіксована textarea, як просили */
+    .textarea-fixed {
+        resize: none; /* Забороняємо розтягування */
+        width: 100%;
+        background-color: #1a1a1a; /* Темніший фон для самого інпуту */
+        border: 1px solid #444;
+        transition: border-color 0.2s;
+    }
+
+    .textarea-fixed:focus {
+        border-color: var(--primary-blue);
+        outline: none;
+    }
+
+    /* Вирівнювання кнопки праворуч */
+    .add-comment-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 1rem;
+    }
+
+    /* Стиль для "немає коментарів" */
+    .no-comments {
+        text-align: center;
+        padding: 2rem;
+        color: #777;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+/* Стилі для автора посту */
+.author-block {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+/* Розмір аватарки в шапці поста та в коментарях */
+/* Трохи більший розмір для сторінки деталей (32px) */
+.avatar-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 10px;
+    border: 1px solid #444;
+}
+
+.avatar-placeholder-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #3b5bdb; /* Основний колір */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem; /* Трохи більша літера */
+    font-weight: 600;
+    margin-right: 10px;
+    text-transform: uppercase;
+}
+
+/* Вирівнювання в блоці автора */
+.author-block, .comment-author-info {
+    display: flex;
+    align-items: center;
+}
+
+/* Вирівнювання в коментарях */
+.comment-author-info {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+/* Оновлюємо відступи для заголовка коментаря */
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+}
+
+.comment-author {
+    font-weight: 700;
+    color: var(--text-dark);
+    font-size: 1rem;
+}

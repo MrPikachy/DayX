@@ -1,39 +1,54 @@
-document.getElementById("btn-upload-avatar").addEventListener("click", () => {
-  document.getElementById("avatar-input").click()
-})
+document.addEventListener("DOMContentLoaded", () => {
+    const uploadBtn = document.getElementById("btn-upload-avatar");
+    const fileInput = document.getElementById("avatar-input");
+    const avatarImage = document.getElementById("avatar-image");
 
-document.getElementById("avatar-input").addEventListener("change", (e) => {
-  const file = e.target.files[0]
-  if (file) {
-    console.log("[v0] Starting avatar upload for file:", file.name)
-    const formData = new FormData()
-    formData.append("avatar", file)
+    // Перевіряємо, чи існують елементи на сторінці
+    if (uploadBtn && fileInput) {
+        
+        // 1. Клік по кнопці викликає клік по прихованому інпуту
+        uploadBtn.addEventListener("click", () => {
+            fileInput.click();
+        });
 
-    fetch("/api/user/avatar", {
-      method: "POST",
-      body: formData,
-    })
-      .then((r) => {
-        console.log("[v0] Avatar upload response status:", r.status)
-        return r.json()
-      })
-      .then((data) => {
-        console.log("[v0] Avatar upload response:", data)
-        if (data.success) {
-          const reader = new FileReader()
-          reader.onload = (event) => {
-            console.log("[v0] Avatar loaded successfully")
-            document.getElementById("avatar-image").src = event.target.result
-          }
-          reader.readAsDataURL(file)
-        } else {
-          console.error("[v0] Avatar upload failed:", data.error)
-          alert("Помилка при завантаженні аватарки: " + (data.error || "Unknown error"))
-        }
-      })
-      .catch((err) => {
-        console.error("[v0] Avatar upload error:", err)
-        alert("Помилка при завантаженні: " + err.message)
-      })
-  }
-})
+        // 2. Коли файл обрано
+        fileInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                console.log("[JS] Починаємо завантаження:", file.name);
+                
+                const formData = new FormData();
+                formData.append("avatar", file);
+
+                // Відправка на сервер
+                fetch("/api/user/avatar", {
+                    method: "POST",
+                    body: formData,
+                })
+                .then((r) => r.json())
+                .then((data) => {
+                    console.log("[JS] Відповідь сервера:", data);
+                    
+                    if (data.success) {
+                        // Оновлюємо картинку відразу без перезавантаження сторінки
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            if(avatarImage) {
+                                avatarImage.src = event.target.result;
+                            }
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        alert("Помилка: " + (data.error || "Невідома помилка"));
+                    }
+                })
+                .catch((err) => {
+                    console.error("Помилка мережі:", err);
+                    alert("Помилка завантаження. Перевірте консоль.");
+                });
+            }
+        });
+    } else {
+        console.error("Елементи завантаження аватара не знайдені в HTML!");
+    }
+});

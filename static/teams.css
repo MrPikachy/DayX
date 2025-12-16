@@ -50,3 +50,53 @@
     font-weight: 700;
     margin-bottom: 0.5rem;
 }
+
+/* =========================================
+   Стилізація списку учасників та аватарок
+   ========================================= */
+
+/* Контейнер для одного учасника (фото + ім'я) */
+.member-item {
+    display: flex;
+    align-items: center; /* Центрує текст відносно аватарки по вертикалі */
+    gap: 12px;           /* Відступ між аватаркою та іменем */
+    padding: 8px;        /* Трохи повітря навколо */
+    border-radius: 10px; /* Закруглення при наведенні */
+    transition: background 0.2s;
+}
+
+.member-item:hover {
+    background-color: rgba(255, 255, 255, 0.05); /* Легкий фон при наведенні */
+}
+
+/* Сама аватарка */
+.member-avatar,
+.team-member-list img,
+.member-item img {
+    width: 42px !important;    /* Фіксований розмір */
+    height: 42px !important;
+    border-radius: 50%;        /* Ідеальне коло */
+    object-fit: cover;         /* Фото обрізається, а не сплющується */
+    border: 2px solid #2d3748; /* Темна рамка, щоб відокремити від фону */
+    flex-shrink: 0;            /* Забороняє стискати фото, якщо ім'я довге */
+    background-color: #ccc;    /* Заглушка, якщо фото не завантажилось */
+}
+
+/* Ім'я учасника */
+.member-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.member-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #e2e8f0; /* Світлий текст */
+    line-height: 1.2;
+}
+
+.member-role {
+    font-size: 0.8rem;
+    color: #94a3b8; /* Сірий текст для ролі (Admin/User) */
+}
