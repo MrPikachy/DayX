@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day X</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-left">
+      <a href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='icon.png') }}" alt="icon" class="nav-icon">
+      </a>
+<!--      <span class="brand">Day X</span>-->
+      <a class="nav-link" href="{{ url_for('schedule') }}">Розклад</a>
+      <a class="nav-link" href="{{ url_for('groups') }}">Групи</a>
+    </div>
+
+    <div class="nav-right">
+      {% if g.user %}
+        <span class="nav-username">{{ g.user['first_name'] }} {{ g.user['last_name'] }}</span>
+        <a class="profile-button" href="{{ url_for('profile') }}">Профіль</a>
+        <a class="logout-button" href="{{ url_for('logout') }}">Вийти</a>
+      {% else %}
+        <a class="nav-link" href="{{ url_for('login') }}">Увійти</a>
+        <a class="nav-link" href="{{ url_for('register') }}">Реєстрація</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+          {% for category, msg in messages %}
+            <li class="flash {{ category }}">{{ msg }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

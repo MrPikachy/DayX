@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Вітаємо на Day X</h1>
+  {% if session.get('first_name') and session.get('last_name') %}
+    <p>Ви увійшли як <strong>{{ session.get('first_name') }} {{ session.get('last_name') }}</strong>.</p>
+  {% else %}
+    <p>Будь ласка, увійдіть або зареєструйтесь.</p>
+  {% endif %}
+{% endblock %}

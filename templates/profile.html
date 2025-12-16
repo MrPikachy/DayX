@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Профіль</h2>
+  <p><strong>Ім'я:</strong> {{ user['first_name'] }} {{ user['last_name'] }}</p>
+  <p><strong>Пошта:</strong> {{ user['email'] }}</p>
+
+  {% if user['group_name'] %}
+    <p><strong>Поточна група:</strong> {{ user['group_name'] }}</p>
+  {% else %}
+    <p><strong>Поточна група:</strong> Не встановлено</p>
+  {% endif %}
+
+  {% if error %}
+    <p class="error">{{ error }}</p>
+  {% endif %}
+
+  <form method="post">
+      <input name="group_name" maxlength="5" pattern="[А-Я]{2}-\d{2}" title="Формат: AB-12">
+    </label><br>
+    <button type="submit">Змінити</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,15 @@
+body { font-family: Arial, sans-serif; margin: 0; }
+.navbar { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; background:#f0f0f0; }
+.nav-left { display:flex; align-items:center; gap:12px; }
+.nav-icon { width:36px; height:36px; object-fit:cover; border-radius:6px; }
+.brand { font-weight:700; margin-right:8px; }
+.nav-link { margin-left:6px; text-decoration:none; color:#333; }
+.nav-right { display:flex; align-items:center; gap:12px; }
+.nav-username { margin-right:8px; font-weight:600; }
+.container { padding:24px; }
+.flashes { list-style:none; padding:0; }
+.flash { padding:8px; border-radius:6px; margin-bottom:8px; }
+.flash.error { background:#ffdede; }
+.flash.success { background:#e6ffe6; }
+.flash.info { background:#e6f0ff; }
+button { padding:8px 12px; border-radius:6px; border:1px solid #ccc; cursor:pointer; }
