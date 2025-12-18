@@ -1,4 +1,163 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
+{% block title %}Розклад — Day X{% endblock %}
+
 {% block content %}
-  <h2>Поки пусто</h2>
+<link rel="stylesheet" href="{{ url_for('static', filename='schedule.css') }}">
+<div class="schedule-container">
+  <header class="schedule-header">
+    <div class="header-left">
+      <h1>Розклад</h1>
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <span class="group-display" id="group-display">Група: {{ current_user_group or 'Не встановлено' }}</span>
+        <!-- Added subgroup switcher buttons in schedule header -->
+        <div class="subgroup-switcher">
+            <label style="font-size: 13px; color: #666; margin-right: 8px;">Підгрупа:</label>
+            <button id="subgroup-btn-1" class="subgroup-btn subgroup-active" data-subgroup="1">Підгрупа 1</button>
+            <span class="subgroup-separator">|</span>
+            <button id="subgroup-btn-2" class="subgroup-btn" data-subgroup="2">Підгрупа 2</button>
+        </div>
+      </div>
+    </div>
+    <div class="header-controls">
+      <button id="today-btn" class="control-btn">Сьогодні</button>
+      <div class="nav-month">
+        <button id="prev-month" class="nav-btn">‹</button>
+        <span id="month-label"></span>
+        <button id="next-month" class="nav-btn">›</button>
+      </div>
+    </div>
+  </header>
+
+  {% if not current_user_group %}
+    <div class="alert alert-info">
+      Будь ласка, <a href="{{ url_for('profile') }}">встановіть групу в профілі</a>, щоб побачити розклад.
+    </div>
+  {% else %}
+    <div id="calendar-wrapper">
+      <div class="weekdays-header">
+        <div class="weekday">Пн</div>
+        <div class="weekday">Вт</div>
+        <div class="weekday">Ср</div>
+        <div class="weekday">Чт</div>
+        <div class="weekday">Пт</div>
+        <div class="weekday">Сб</div>
+        <div class="weekday">Нд</div>
+      </div>
+      <div id="calendar" class="calendar-grid"></div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- ... existing modals and context menus ... -->
+<div id="event-context-menu" class="context-menu hidden">
+  <button class="context-menu-item" id="edit-event-btn">Змінити назву</button>
+  <button class="context-menu-item" id="edit-time-btn">Змінити час</button>
+  <button class="context-menu-item context-menu-danger" id="delete-event-btn">Видалити</button>
+</div>
+
+<div id="empty-context-menu" class="context-menu hidden">
+  <button class="context-menu-item" id="add-event-btn">Додати подію</button>
+</div>
+
+<!-- ... existing modals ... -->
+<div id="modal" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content">
+    <button class="modal-close">&times;</button>
+    <h2 id="modal-title">Додати подію</h2>
+
+    <div class="form-group">
+      <label for="ev-title">Назва дисципліни</label>
+      <input id="ev-title" type="text" class="form-input" placeholder="Введіть назву">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="ev-date">Дата</label>
+        <input id="ev-date" type="date" class="form-input">
+      </div>
+      <div class="form-group">
+        <label for="ev-type">Тип</label>
+        <select id="ev-type" class="form-input">
+          <option value="lecture">Лекція</option>
+          <option value="practical">Практична</option>
+          <option value="lab">Лабораторна</option>
+          <option value="deadline">Дедлайн</option>
+          <option value="other">Інше</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="ev-start">Час початку</label>
+        <input id="ev-start" type="time" class="form-input" placeholder="10:00">
+      </div>
+      <div class="form-group">
+        <label for="ev-end">Час завершення</label>
+        <input id="ev-end" type="time" class="form-input" placeholder="11:30">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <div class="modal-right-buttons">
+        <button id="cancel-ev" class="btn btn-secondary">Скасувати</button>
+        <button id="save-ev" class="btn btn-primary">Зберегти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-edit-name" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content modal-small">
+    <button class="modal-close">&times;</button>
+    <h2>Змінити назву</h2>
+
+    <div class="form-group">
+      <label for="edit-name-input">Нова назва</label>
+      <input id="edit-name-input" type="text" class="form-input">
+    </div>
+
+    <div class="modal-actions">
+      <div class="modal-right-buttons">
+        <button id="cancel-edit-name" class="btn btn-secondary">Скасувати</button>
+        <button id="save-edit-name" class="btn btn-primary">Зберегти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-edit-time" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content modal-small">
+    <button class="modal-close">&times;</button>
+    <h2>Змінити час</h2>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="edit-time-start">Час початку</label>
+        <input id="edit-time-start" type="time" class="form-input">
+      </div>
+      <div class="form-group">
+        <label for="edit-time-end">Час завершення</label>
+        <input id="edit-time-end" type="time" class="form-input">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <div class="modal-right-buttons">
+        <button id="cancel-edit-time" class="btn btn-secondary">Скасувати</button>
+        <button id="save-edit-time" class="btn btn-primary">Зберегти</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pass subgroup to JavaScript from user data -->
+<script>
+  window.CURRENT_USER_GROUP = "{{ current_user_group or '' }}";
+  window.CURRENT_USER_SUBGROUP = {{ current_user_subgroup or 1 }};
+</script>
+<script src="{{ url_for('static', filename='schedule.js') }}"></script>
 {% endblock %}

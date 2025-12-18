@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Коли файл обрано
-    // Коли файл обрано
     if (fileInput) {
         fileInput.addEventListener("change", (e) => {
             const file = e.target.files[0];
@@ -77,15 +76,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Стара кнопка видалення (якщо вона є в HTML спочатку)
     if (removeFileBtn) {
         removeFileBtn.addEventListener("click", clearFile);
-    }
-
-    // Видалення файлу
-    if (removeFileBtn) {
-        removeFileBtn.addEventListener("click", () => {
-            selectedFile = null;
-            fileInput.value = "";
-            filePreview.classList.add("hidden");
-        });
     }
 
     // --- 2. Відправка повідомлення ---
@@ -151,12 +141,12 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById("add-member-email").focus();
     });
 
-    // Закриття
-    document.querySelectorAll("#close-members, #cancel-rename, #cancel-add-member").forEach(el => {
-        el.addEventListener("click", () => {
-            document.querySelectorAll(".modal").forEach(m => m.classList.add("hidden"));
-        });
-    });
+    // Setup modals using the global utility function
+    if (typeof setupModal === 'function') {
+        setupModal('modal-members');
+        setupModal('modal-rename');
+        setupModal('modal-add-member');
+    }
 
     // Запрошення учасника
     document.getElementById("confirm-add-member")?.addEventListener("click", async () => {

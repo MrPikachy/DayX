@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="teams-container">
+  <div class="teams-header">
+    <h1>Команди</h1>
+    <button id="create-team-btn" class="btn btn-primary">+ Створити команду</button>
+  </div>
+
+  <div id="teams-list">
+    {% if teams %}
+      <div class="teams-grid">
+        {% for team in teams %}
+          <div class="team-card">
+            <h3>{{ team['name'] }}</h3>
+            <p class="team-info">Створена {{ team['created_at'][:10] }}</p>
+            <a href="{{ url_for('team_chat', team_id=team['id']) }}" class="btn btn-primary">Відкрити чат</a>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <p>Ви ще немаєте жодної команди</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Create team modal -->
+<div id="modal-create-team" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-content">
+    <button class="modal-close">&times;</button>
+    <h2>Створити команду</h2>
+    
+    <div class="form-group">
+      <label for="team-name-input">Назва команди</label>
+      <input id="team-name-input" type="text" class="form-input" placeholder="Введіть назву">
+    </div>
+
+    <div class="modal-actions">
+      <div class="modal-right-buttons">
+        <button id="cancel-team" class="btn btn-secondary">Скасувати</button>
+        <button id="create-team-confirm" class="btn btn-primary">Створити</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .teams-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  .teams-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+  }
+
+  .teams-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+  }
+
+  .team-card {
+    background: white;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s;
+  }
+
+  .team-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .team-card h3 {
+    margin: 0 0 8px 0;
+    color: #3c4043;
+  }
+
+  .team-info {
+    color: #5f6368;
+    font-size: 13px;
+    margin: 0 0 16px 0;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #5f6368;
+  }
+
+  .modal-content {
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    padding: 32px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #3c4043;
+    margin-bottom: 6px;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #3c4043;
+    font-family: inherit;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: #1f71e8;
+    box-shadow: 0 0 0 3px rgba(31, 113, 232, 0.1);
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid #dadce0;
+  }
+
+  .modal-right-buttons {
+    display: flex;
+    gap: 12px;
+  }
+
+  .btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: #1f71e8;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: #1557b8;
+  }
+
+  .btn-secondary {
+    background: #f8f9fa;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+  }
+
+  .btn-secondary:hover {
+    background: #f1f3f4;
+  }
+
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .modal.hidden {
+    display: none;
+  }
+
+  .modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #5f6368;
+    cursor: pointer;
+    padding: 8px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-close:hover {
+    background: #f8f9fa;
+    border-radius: 50%;
+  }
+
+  .modal-content h2 {
+    margin: 0 0 24px 0;
+    font-size: 20px;
+    font-weight: 500;
+    color: #3c4043;
+  }
+</style>
+
+<script src="{{ url_for('static', filename='teams.js') }}"></script>
+{% endblock %}

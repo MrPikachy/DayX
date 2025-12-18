@@ -1,68 +1,292 @@
-/* --- Стилі для медіа в чаті --- */
-  .message-attachment-wrapper {
-    margin-left: 46px; /* Відступ під аватаром */
+/* Container Layout */
+.team-chat-container {
+    display: flex;
+    flex-direction: column;
+    /* Висота: 100vh - (висота навбару + висота заголовка чату + відступи) */
+    height: calc(100vh - 180px); 
+    background-color: var(--card-bg);
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--secondary-gray);
+    margin-bottom: 20px;
+}
+
+/* Header tweaks in app-header handled by base style, but buttons here */
+.app-header .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+}
+
+/* Messages Area */
+.team-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    background-color: #050505; /* Дуже темний фон для повідомлень */
+}
+
+.message {
+    display: flex;
+    gap: 1rem;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Avatar */
+.message-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--primary-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.message-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Content */
+.message-content {
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+
+.message-author {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--primary-blue);
+    font-size: 0.9rem;
+}
+
+.message-text {
+    background-color: #2a2a2a;
+    padding: 10px 14px;
+    border-radius: 0 12px 12px 12px;
+    color: #e0e0e0;
+    line-height: 1.5;
+    word-wrap: break-word;
+    border: 1px solid #333;
+}
+
+.message-time {
+    font-size: 0.7rem;
+    color: #666;
+    margin-top: 4px;
+    align-self: flex-start;
+}
+
+/* Attachments */
+.message-attachment-wrapper {
     margin-top: 8px;
-  }
+}
 
-  /* Картинки */
-  .chat-image-preview {
-    max-width: 300px; /* Обмеження ширини */
-    max-height: 300px;
+.chat-image-preview {
+    max-width: 300px;
     border-radius: 8px;
-    border: 1px solid #e0e0e0;
-    cursor: pointer;
-    transition: transform 0.2s;
-  }
+    border: 1px solid #444;
+}
 
-  .chat-image-preview:hover {
-    filter: brightness(0.95);
-  }
-
-  /* Відео */
-  .chat-video-preview {
-    max-width: 350px;
+.chat-video-preview {
+    max-width: 320px;
     border-radius: 8px;
-  }
+}
 
-  /* Файли (документи, архіви) */
-  .file-attachment {
+.file-attachment {
     display: inline-flex;
     align-items: center;
-    background: #f0f2f5; /* Світло-сірий фон як у Telegram/FB */
+    background-color: #1f2937;
     padding: 10px 14px;
     border-radius: 8px;
     text-decoration: none;
-    max-width: 300px;
-    border: 1px solid #dadce0;
+    border: 1px solid #374151;
     transition: background 0.2s;
-  }
+}
 
-  .file-attachment:hover {
-    background: #e4e6eb;
-  }
+.file-attachment:hover {
+    background-color: #374151;
+}
 
-  .file-icon {
-    font-size: 24px;
+.file-attachment i {
     margin-right: 10px;
-  }
+    color: var(--primary-blue);
+}
 
-  .file-info {
+.file-info {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-  }
+}
 
-  .file-name {
-    color: #3c4043;
+.file-name {
+    color: #fff;
+    font-size: 0.9rem;
     font-weight: 500;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+}
 
-  .file-download-text {
-    color: #1f71e8;
-    font-size: 11px;
-    margin-top: 2px;
-  }
+.file-download-text {
+    color: #9ca3af;
+    font-size: 0.75rem;
+}
+
+/* Input Area */
+.team-input-area {
+    background-color: #1a1a1a;
+    border-top: 1px solid var(--secondary-gray);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.upload-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--primary-blue);
+    margin-bottom: 5px;
+    border: 1px solid var(--primary-blue);
+}
+.upload-preview.hidden {
+    display: none;
+}
+.btn-icon-small {
+    background: none;
+    border: none;
+    color: #aaa;
+    cursor: pointer;
+}
+
+.input-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.input-row .form-input {
+    flex: 1;
+    background-color: #0a0a0a;
+    border: 1px solid #333;
+    padding: 12px;
+}
+
+.icon-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background-color: #2a2a2a;
+    color: #aaa;
+    border: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-btn:hover {
+    color: white;
+    background-color: #333;
+}
+
+#send-btn {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Members Modal List */
+.members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 15px 0;
+    padding-right: 5px; /* Щоб скрол не перекривав контент */
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid transparent; /* Для плавності ховера */
+    background-color: rgba(255, 255, 255, 0.02); /* Дуже легкий фон */
+    transition: background 0.2s ease;
+}
+
+.member-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Відступ між аватаркою та ім'ям */
+}
+
+/* Контейнер для аватарки */
+.member-avatar {
+    width: 40px;          /* Фіксована ширина */
+    height: 40px;         /* Фіксована висота */
+    border-radius: 50%;   /* Робимо коло */
+    background-color: var(--primary-blue); /* Фон для ініціалів, якщо немає фото */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 700;
+    flex-shrink: 0;       /* Забороняємо сплющувати аватарку */
+    overflow: hidden;     /* Обрізаємо фото, що вилазять за краї */
+    border: 1px solid #444; /* Тонка рамка */
+}
+
+/* Саме зображення всередині */
+.member-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;    /* Фото заповнює коло без спотворень */
+    display: block;
+}
+
+/* Ім'я користувача */
+.member-info span {
+    color: #e2e8f0;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+/* Кнопка видалення */
+.icon-btn-danger {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.icon-btn-danger:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #ff6b6b;
+}

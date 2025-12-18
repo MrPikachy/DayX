@@ -1,0 +1,102 @@
+/* Teams Page Specific Styles */
+
+.teams-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.team-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--secondary-gray);
+    border-radius: 15px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.team-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+}
+
+.team-card h3 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.team-info {
+    color: #9ca3af;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #9ca3af;
+}
+
+.empty-state i {
+    margin-bottom: 1.5rem;
+    color: var(--primary-blue);
+}
+
+.empty-state h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+/* =========================================
+   Стилізація списку учасників та аватарок
+   ========================================= */
+
+/* Контейнер для одного учасника (фото + ім'я) */
+.member-item {
+    display: flex;
+    align-items: center; /* Центрує текст відносно аватарки по вертикалі */
+    gap: 12px;           /* Відступ між аватаркою та іменем */
+    padding: 8px;        /* Трохи повітря навколо */
+    border-radius: 10px; /* Закруглення при наведенні */
+    transition: background 0.2s;
+}
+
+.member-item:hover {
+    background-color: rgba(255, 255, 255, 0.05); /* Легкий фон при наведенні */
+}
+
+/* Сама аватарка */
+.member-avatar,
+.team-member-list img,
+.member-item img {
+    width: 42px !important;    /* Фіксований розмір */
+    height: 42px !important;
+    border-radius: 50%;        /* Ідеальне коло */
+    object-fit: cover;         /* Фото обрізається, а не сплющується */
+    border: 2px solid #2d3748; /* Темна рамка, щоб відокремити від фону */
+    flex-shrink: 0;            /* Забороняє стискати фото, якщо ім'я довге */
+    background-color: #ccc;    /* Заглушка, якщо фото не завантажилось */
+}
+
+/* Ім'я учасника */
+.member-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.member-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #e2e8f0; /* Світлий текст */
+    line-height: 1.2;
+}
+
+.member-role {
+    font-size: 0.8rem;
+    color: #94a3b8; /* Сірий текст для ролі (Admin/User) */
+}

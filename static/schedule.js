@@ -1,475 +1,424 @@
-const LPNU_API = "https://student.lpnu.ua/students_schedule"
-let currentDate = new Date()
-const currentGroup = window.CURRENT_USER_GROUP
-let currentSubgroup = (typeof window.CURRENT_USER_SUBGROUP !== 'undefined') ? parseInt(window.CURRENT_USER_SUBGROUP, 10) : 1;
-if (isNaN(currentSubgroup) || (currentSubgroup !== 1 && currentSubgroup !== 2)) currentSubgroup = 1;
-
-let allEvents = []
-let editingEventId = null
-let editingEventDate = null
-
-// --- Helper Functions ---
-function getRawId(id) {
-  if (!id) return null;
-  return String(id).replace("custom_", "").replace("lpnu_", "").replace("task_", "");
-}
-
-function formatDate(d) {
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-function getFirstDayOfMonth(d) {
-  const first = new Date(d.getFullYear(), d.getMonth(), 1)
-  return (first.getDay() + 6) % 7
-}
-
-// --- Main Init ---
-async function initCalendar() {
-  if (!currentGroup) return;
-  setupEventListeners()
-  setupSubgroupSwitcher()
-  updateSubgroupUI()
-  await fetchSchedule()
-  renderCalendar()
-}
-
-// --- Data Fetching ---
-async function fetchSchedule() {
-  try {
-    const response = await fetch(`/api/schedule/${currentGroup}?subgroup=${currentSubgroup}`)
-    if (!response.ok) throw new Error("Network response was not ok");
-    const data = await response.json()
-    allEvents = data.events || []
-  } catch (error) {
-    console.error("Error fetching schedule:", error)
-    allEvents = []
-  }
-}
-
-function getEventsForDate(dateStr) {
-  return allEvents.filter((e) => {
-    if (!e.start) return false;
-    const eventDate = e.start.split("T")[0]
-    return eventDate === dateStr
-  })
-}
-
-// --- Rendering ---
-function renderCalendar() {
-  const monthLabel = document.getElementById("month-label")
-  const calendar = document.getElementById("calendar")
-  if (!calendar) return;
-  calendar.innerHTML = ""
-
-  const year = currentDate.getFullYear()
-  const month = currentDate.getMonth()
-
-  const monthName = currentDate.toLocaleString("uk-UA", { month: "long", year: "numeric" })
-  monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1)
-
-  const firstDayIndex = getFirstDayOfMonth(currentDate)
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const todayStr = formatDate(new Date())
-
-  for (let i = 0; i < firstDayIndex; i++) {
-    const emptyCell = document.createElement("div")
-    emptyCell.className = "calendar-day empty"
-    calendar.appendChild(emptyCell)
-  }
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day)
-    const dateStr = formatDate(date)
-    const isToday = (dateStr === todayStr)
-
-    const dayCell = document.createElement("div")
-    dayCell.className = `calendar-day ${isToday ? "today" : ""}`
-    dayCell.dataset.date = dateStr
-
-    const dayNum = document.createElement("div")
-    dayNum.className = "day-number"
-    dayNum.textContent = day
-    dayCell.appendChild(dayNum)
-
-    const eventsContainer = document.createElement("div")
-    eventsContainer.className = "day-events"
-
-    const dayEvents = getEventsForDate(dateStr)
-    dayEvents.sort((a, b) => (a.start || "").localeCompare(b.start || ""))
-
-    dayEvents.forEach((event) => {
-      const eventEl = createEventElement(event, dateStr)
-      eventsContainer.appendChild(eventEl)
-    })
-
-    dayCell.appendChild(eventsContainer)
-
-    dayCell.addEventListener("contextmenu", (e) => {
-      if (!e.target.closest(".day-event")) {
-        e.preventDefault()
-        showContextMenu("empty", dateStr, null, e)
-      }
-    })
-    calendar.appendChild(dayCell)
-  }
-}
-
-function createEventElement(event, dateStr) {
-  const el = document.createElement("div")
-  let typeClass = "event-other"
-  if (event.className && event.className.length > 0) typeClass = event.className[0]
-
-  const isCustom = (event.extendedProps && event.extendedProps.is_custom === 1);
-  const isTask = (event.extendedProps && event.extendedProps.type === 'task_deadline');
-
-  el.className = `day-event ${typeClass} ${isCustom ? "custom" : ""}`
-  el.dataset.eventId = event.id
-
-  const title = event.title || "Подія"
-  const startTime = event.start ? (event.start.split("T")[1] || "").substring(0,5) : ""
-
-  // Для дедлайнів показуємо просто час або іконку
-  let displayTime = startTime;
-
-  // Обрізання тексту
-  let displayText = title
-  if (displayText.length > 20) displayText = displayText.substring(0, 19) + "…"
-  if (displayTime && !event.allDay) displayText = `${displayText} (${displayTime})`
-
-  el.textContent = displayText
-
-  // ЛКМ
-  el.addEventListener("click", (ev) => {
-    ev.preventDefault()
-    ev.stopPropagation()
-
-    // --- ЗМІНА 2: Дедлайни тепер відкривають модалку ---
-    if (isTask) {
-        openViewModal(event)
-        return;
-    }
-
-    if (isCustom) {
-        openFullModal(dateStr, event)
-    } else {
-        openViewModal(event)
-    }
-  })
-
-  // ПКМ
-  el.addEventListener("contextmenu", (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (isTask) return;
-    if (isCustom) {
-      showContextMenu("event", dateStr, event, e)
-    } else {
-      openViewModal(event) // ПКМ по парі теж відкриває деталі
-    }
-  })
-
-  return el
-}
-
-// --- Context Menus ---
-function showContextMenu(type, dateStr, event, mouseEvent) {
-  const eventMenu = document.getElementById("event-context-menu")
-  const emptyMenu = document.getElementById("empty-context-menu")
-  if(eventMenu) eventMenu.classList.add("hidden")
-  if(emptyMenu) emptyMenu.classList.add("hidden")
-
-  if (type === "event" && event && eventMenu) {
-    editingEventId = event.id
-    editingEventDate = dateStr
-    eventMenu.style.left = mouseEvent.clientX + "px"
-    eventMenu.style.top = mouseEvent.clientY + "px"
-    eventMenu.classList.remove("hidden")
-  } else if (type === "empty" && emptyMenu) {
-    editingEventDate = dateStr
-    editingEventId = null
-    emptyMenu.style.left = mouseEvent.clientX + "px"
-    emptyMenu.style.top = mouseEvent.clientY + "px"
-    emptyMenu.classList.remove("hidden")
-  }
-}
-
-// --- Modals ---
-function closeModal() {
-  const modal = document.getElementById("modal")
-  const inputs = modal.querySelectorAll("input, textarea, button")
-  inputs.forEach(i => i.removeAttribute("disabled"))
-
-  const saveBtn = document.getElementById("save-ev")
-  if(saveBtn) saveBtn.style.display = ""
-
-  const cancelBtn = document.getElementById("cancel-ev")
-  if(cancelBtn) cancelBtn.textContent = "Скасувати"
-
-  // Reset fields
-  document.getElementById("ev-title").value = ""
-  document.getElementById("ev-desc").value = ""
-  document.getElementById("desc-group").style.display = "none"
-
-  modal.classList.add("hidden")
-  editingEventId = null
-  editingEventDate = null
-}
-
-function openFullModal(dateStr, eventData = null) {
-  const modal = document.getElementById("modal")
-  const title = document.getElementById("modal-title")
-
-  const titleInput = document.getElementById("ev-title")
-  const dateInput = document.getElementById("ev-date")
-  const startInput = document.getElementById("ev-start")
-  const endInput = document.getElementById("ev-end")
-
-  const isCustom = eventData && (String(eventData.id).startsWith("custom_") || (eventData.extendedProps && eventData.extendedProps.is_custom));
-
-  if (isCustom) {
-    title.textContent = "Редагувати"
-    titleInput.value = eventData.title || ""
-    dateInput.value = eventData.start ? eventData.start.split("T")[0] : dateStr
-    startInput.value = eventData.start ? eventData.start.substring(11, 16) : ""
-    endInput.value = eventData.end ? eventData.end.substring(11, 16) : ""
-    editingEventId = eventData.id
-  } else {
-    title.textContent = "Нова подія"
-    titleInput.value = ""
-    dateInput.value = dateStr
-    startInput.value = "10:00"
-    endInput.value = "11:30"
-    editingEventId = null
-  }
-
-  editingEventDate = dateStr
-  modal.classList.remove("hidden")
-  titleInput.focus()
-}
-
-function openViewModal(event) {
-  const modal = document.getElementById("modal")
-  const title = document.getElementById("modal-title")
-  const saveBtn = document.getElementById("save-ev")
-  const cancelBtn = document.getElementById("cancel-ev")
-
-  // Поля
-  const titleIn = document.getElementById("ev-title");
-  const descIn = document.getElementById("ev-desc");
-  const descGroup = document.getElementById("desc-group");
-  const startIn = document.getElementById("ev-start");
-  const endIn = document.getElementById("ev-end");
-  const dateIn = document.getElementById("ev-date");
-
-  const isTask = (event.extendedProps && event.extendedProps.type === 'task_deadline');
-
-  title.textContent = isTask ? "Дедлайн" : "Деталі пари"
-
-  // Заповнюємо даними
-  titleIn.value = event.title.replace("⏰ ", "") || ""
-  dateIn.value = event.start ? event.start.split("T")[0] : ""
-  startIn.value = event.start ? event.start.substring(11,16) : ""
-  endIn.value = event.end ? event.end.substring(11,16) : ""
-
-  // --- ЗМІНА 3: Показуємо опис, якщо це задача ---
-  if (isTask && event.extendedProps.description) {
-      descGroup.style.display = "block"
-      descIn.value = event.extendedProps.description
-  } else {
-      descGroup.style.display = "none"
-  }
-
-  // Блокуємо інпути
-  modal.querySelectorAll("input, textarea").forEach(el => el.setAttribute("disabled", "disabled"))
-
-  saveBtn.style.display = "none"
-  cancelBtn.textContent = "Закрити"
-
-  modal.classList.remove("hidden")
-}
-
-// --- Subgroup Switcher ---
-function setupSubgroupSwitcher() {
-  const btn1 = document.getElementById("subgroup-btn-1")
-  const btn2 = document.getElementById("subgroup-btn-2")
-  if(!btn1 || !btn2) return;
-  btn1.onclick = () => handleSubgroupChange(1);
-  btn2.onclick = () => handleSubgroupChange(2);
-}
-
-function handleSubgroupChange(newSubgroup) {
-    if (currentSubgroup === newSubgroup) return;
-    currentSubgroup = newSubgroup;
-    updateSubgroupUI();
-    saveUserSubgroup(newSubgroup);
-    fetchSchedule().then(() => renderCalendar());
-}
-
-function updateSubgroupUI() {
-  const btn1 = document.getElementById("subgroup-btn-1")
-  const btn2 = document.getElementById("subgroup-btn-2")
-  if(!btn1 || !btn2) return;
-  if (currentSubgroup === 1) {
-    btn1.classList.add("subgroup-active"); btn2.classList.remove("subgroup-active")
-  } else {
-    btn1.classList.remove("subgroup-active"); btn2.classList.add("subgroup-active")
-  }
-}
-
-async function saveUserSubgroup(subgroup) {
-  try {
-    const formData = new FormData();
-    formData.append('subgroup', subgroup);
-    await fetch("/api/user/subgroup", { method: "POST", body: formData })
-  } catch (e) { console.error(e) }
-}
-
-// --- Event Handlers & CRUD ---
-function setupEventListeners() {
-  document.getElementById("today-btn")?.addEventListener("click", () => {
-    currentDate = new Date(); renderCalendar()
-  })
-  document.getElementById("prev-month")?.addEventListener("click", () => {
-    currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar()
-  })
-  document.getElementById("next-month")?.addEventListener("click", () => {
-    currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar()
-  })
-
-  document.getElementById("add-event-btn")?.addEventListener("click", () => {
-    document.getElementById("empty-context-menu").classList.add("hidden")
-    openFullModal(editingEventDate)
-  })
-
-  document.getElementById("edit-event-btn")?.addEventListener("click", () => {
-    document.getElementById("event-context-menu").classList.add("hidden")
-    openEditNameModal()
-  })
-  document.getElementById("edit-time-btn")?.addEventListener("click", () => {
-    document.getElementById("event-context-menu").classList.add("hidden")
-    openEditTimeModal()
-  })
-  document.getElementById("delete-event-btn")?.addEventListener("click", deleteEvent)
-
-  document.getElementById("save-ev")?.addEventListener("click", saveEvent)
-  document.getElementById("cancel-ev")?.addEventListener("click", closeModal)
-  document.querySelectorAll(".modal-close").forEach(b => b.addEventListener("click", closeModal))
-  document.querySelectorAll(".modal-overlay").forEach(o => o.addEventListener("click", closeModal))
-
-  document.addEventListener("click", () => {
-    const em = document.getElementById("event-context-menu");
-    const emp = document.getElementById("empty-context-menu");
-    if(em) em.classList.add("hidden");
-    if(emp) emp.classList.add("hidden");
-  })
-
-  document.getElementById("save-edit-name")?.addEventListener("click", saveEventName)
-  document.getElementById("cancel-edit-name")?.addEventListener("click", () => document.getElementById("modal-edit-name").classList.add("hidden"))
-  document.getElementById("save-edit-time")?.addEventListener("click", saveEventTime)
-  document.getElementById("cancel-edit-time")?.addEventListener("click", () => document.getElementById("modal-edit-time").classList.add("hidden"))
-}
-
-async function saveEvent() {
-  const title = document.getElementById("ev-title").value
-  if (!title.trim()) { alert("Введіть назву!"); return }
-
-  const eventData = {
-    id: getRawId(editingEventId),
-    group_name: currentGroup,
-    title: title,
-    type: "other", // --- ЗМІНА 4: Тип за замовчуванням "Інше" ---
-    date: document.getElementById("ev-date").value,
-    start_time: document.getElementById("ev-start").value,
-    end_time: document.getElementById("ev-end").value,
-  }
-
-  try {
-    const response = await fetch("/api/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(eventData),
-    })
-    if (response.ok) {
-      closeModal()
-      await fetchSchedule()
-      renderCalendar()
-    }
-  } catch (error) { console.error("Save error:", error) }
-}
-
-async function deleteEvent() {
-  if (!editingEventId || !confirm("Видалити подію?")) return
-  try {
-    const response = await fetch(`/api/event/${getRawId(editingEventId)}`, { method: "DELETE" })
-    if (response.ok) {
-        document.getElementById("event-context-menu").classList.add("hidden")
-        await fetchSchedule()
-        renderCalendar()
-    }
-  } catch (e) { console.error(e) }
-}
-
-async function saveEventName() {
-    const newVal = document.getElementById("edit-name-input").value;
-    if(!newVal) return;
-    const evt = allEvents.find(e => e.id == editingEventId);
-    if(!evt) return;
-
-    const data = {
-        id: getRawId(editingEventId),
-        group_name: currentGroup,
-        title: newVal,
-        type: (evt.extendedProps && evt.extendedProps.type) || 'other',
-        date: evt.start.split('T')[0],
-        start_time: evt.start.substring(11,16),
-        end_time: evt.end.substring(11,16)
+document.addEventListener('DOMContentLoaded', () => {
+    const calendar = document.getElementById('calendar');
+    const monthLabel = document.getElementById('month-label');
+    const prevMonthBtn = document.getElementById('prev-month');
+    const nextMonthBtn = document.getElementById('next-month');
+    const todayBtn = document.getElementById('today-btn');
+    const subgroup1Btn = document.getElementById('subgroup-btn-1');
+    const subgroup2Btn = document.getElementById('subgroup-btn-2');
+
+    // Модальні вікна
+    const eventModal = document.getElementById('modal');
+    const dayDetailModal = document.getElementById('day-detail-modal');
+    const infoModal = document.getElementById('modal-event-info'); // Нове вікно деталей
+
+    // Контекстні меню
+    const eventContextMenu = document.getElementById('event-context-menu');
+    const emptyContextMenu = document.getElementById('empty-context-menu');
+
+    let currentDate = new Date();
+    let currentSubgroup = window.CURRENT_USER_SUBGROUP || 1;
+    let allEvents = [];
+
+    // Змінні для редагування
+    let editingEventId = null;
+    let editingEventDate = null;
+    let currentContextMenuEvent = null; // Зберігаємо подію, на якій клікнули ПКМ
+
+    const MAX_EVENTS_VISIBLE = 3;
+
+    // --- API ---
+    const fetchSchedule = async () => {
+        try {
+            const group = window.CURRENT_USER_GROUP;
+            if (!group) return;
+            const response = await fetch(`/api/schedule/${group}?subgroup=${currentSubgroup}`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const data = await response.json();
+            allEvents = data.events || [];
+            renderCalendar();
+        } catch (error) {
+            console.error("Error fetching schedule:", error);
+        }
     };
-    await fetch("/api/event", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(data)
-    });
-    document.getElementById("modal-edit-name").classList.add("hidden");
-    await fetchSchedule(); renderCalendar();
-}
 
-function openEditNameModal() {
-    const evt = allEvents.find(e => e.id == editingEventId);
-    if(!evt) return;
-    document.getElementById("edit-name-input").value = evt.title;
-    document.getElementById("modal-edit-name").classList.remove("hidden");
-}
+    // --- RENDER ---
+    const renderCalendar = () => {
+        calendar.innerHTML = '';
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
 
-function openEditTimeModal() {
-    const evt = allEvents.find(e => e.id == editingEventId);
-    if(!evt) return;
-    document.getElementById("edit-time-start").value = evt.start.substring(11,16);
-    document.getElementById("edit-time-end").value = evt.end.substring(11,16);
-    document.getElementById("modal-edit-time").classList.remove("hidden");
-}
+        const monthName = currentDate.toLocaleString("uk-UA", { month: "long", year: "numeric" });
+        monthLabel.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
 
-async function saveEventTime() {
-    const s = document.getElementById("edit-time-start").value;
-    const e_time = document.getElementById("edit-time-end").value;
-    const evt = allEvents.find(e => e.id == editingEventId);
-    if(!evt) return;
+        const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const todayStr = new Date().toDateString();
 
-    const data = {
-        id: getRawId(editingEventId),
-        group_name: currentGroup,
-        title: evt.title,
-        type: (evt.extendedProps && evt.extendedProps.type) || 'other',
-        date: evt.start.split('T')[0],
-        start_time: s, end_time: e_time
+        // Порожні клітинки до 1 числа
+        for (let i = 0; i < firstDayIndex; i++) {
+            calendar.insertAdjacentHTML('beforeend', '<div class="calendar-day empty"></div>');
+        }
+
+        // Дні місяця
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            const dateStr = date.toISOString().split('T')[0];
+            const dayCell = document.createElement('div');
+            dayCell.className = `calendar-day ${date.toDateString() === todayStr ? 'today' : ''}`;
+            dayCell.dataset.date = dateStr;
+
+            dayCell.innerHTML = `<div class="day-number">${day}</div><div class="day-events"></div>`;
+
+            const dayEventsContainer = dayCell.querySelector('.day-events');
+
+            // Фільтруємо події для цього дня
+            const dayEvents = allEvents.filter(e => e.start && new Date(e.start).toDateString() === date.toDateString())
+                                     .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+
+            // Рендеримо перші N подій
+            dayEvents.slice(0, MAX_EVENTS_VISIBLE).forEach(event => {
+                dayEventsContainer.appendChild(createEventElement(event));
+            });
+
+            // Якщо подій більше, показуємо "+X більше"
+            if (dayEvents.length > MAX_EVENTS_VISIBLE) {
+                const moreLink = document.createElement('div');
+                moreLink.className = 'day-more-link';
+                moreLink.textContent = `+${dayEvents.length - MAX_EVENTS_VISIBLE} більше`;
+                moreLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openDayDetailModal(date, dayEvents);
+                });
+                dayEventsContainer.appendChild(moreLink);
+            }
+
+            // ПКМ по порожньому місцю в дні
+            dayCell.addEventListener('contextmenu', (e) => {
+                if (e.target.closest('.day-event')) return;
+                e.preventDefault();
+                showContextMenu('empty', dateStr, null, e);
+            });
+
+            calendar.appendChild(dayCell);
+        }
     };
-    await fetch("/api/event", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(data)
-    });
-    document.getElementById("modal-edit-time").classList.add("hidden");
-    await fetchSchedule(); renderCalendar();
-}
 
-document.addEventListener("DOMContentLoaded", initCalendar)
+    const createEventElement = (event) => {
+        const el = document.createElement('div');
+        const typeClass = event.className && event.className.length > 0 ? event.className[0] : 'event-other';
+        el.className = `day-event ${typeClass}`;
+
+        const title = event.title || "Подія";
+        const startTime = event.start ? new Date(event.start).toTimeString().substring(0, 5) : "";
+        el.textContent = startTime ? `${startTime} ${title}` : title;
+
+        // ПКМ по події
+        el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            currentContextMenuEvent = event; // Зберігаємо подію
+            showContextMenu('event', null, event, e);
+        });
+
+        // ЛКМ по події (можна теж відкривати деталі)
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Якщо це університетська пара - деталі, якщо власна - редагування (або теж деталі, як зручніше)
+            if (event.extendedProps && event.extendedProps.is_custom) {
+                // Можна відкрити редагування
+                 editingEventId = event.id.replace('custom_', '');
+                 openEventModal(event);
+            } else {
+                showEventInfo(event);
+            }
+        });
+
+        return el;
+    };
+
+    // --- CONTEXT MENU LOGIC ---
+    const showContextMenu = (type, dateStr, event, mouseEvent) => {
+        hideContextMenus();
+        let menu;
+
+        if (type === 'event') {
+            menu = eventContextMenu;
+
+            // Логіка: Що показувати в меню?
+            const isCustom = event.extendedProps && event.extendedProps.is_custom;
+
+            const viewBtn = document.getElementById('view-details-btn');
+            const editBtn = document.getElementById('edit-event-btn');
+            const editTimeBtn = document.getElementById('edit-time-btn');
+            const deleteBtn = document.getElementById('delete-event-btn');
+
+            if (isCustom) {
+                // Власна подія: Дозволяємо редагувати/видаляти
+                viewBtn.style.display = 'none';
+                editBtn.style.display = 'block';
+                editTimeBtn.style.display = 'block';
+                deleteBtn.style.display = 'block';
+                editingEventId = event.id.replace('custom_', ''); // ID для API
+            } else {
+                // Університетська пара: Тільки перегляд
+                viewBtn.style.display = 'block';
+                editBtn.style.display = 'none';
+                editTimeBtn.style.display = 'none';
+                deleteBtn.style.display = 'none';
+            }
+
+        } else {
+            menu = emptyContextMenu;
+            editingEventDate = dateStr;
+        }
+
+        // Позиціонування (щоб не вилазило за екран)
+        const x = Math.min(mouseEvent.clientX, window.innerWidth - 200);
+        const y = Math.min(mouseEvent.clientY, window.innerHeight - 150);
+
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+        menu.classList.remove('hidden');
+    };
+
+    const hideContextMenus = () => {
+        eventContextMenu.classList.add('hidden');
+        emptyContextMenu.classList.add('hidden');
+    };
+
+    // --- VIEW DETAILS MODAL (Оновлено для Дедлайнів) ---
+    const showEventInfo = (event) => {
+        const content = document.getElementById('event-info-content');
+        const modalHeader = document.querySelector('#modal-event-info .modal-header'); // Знаходимо заголовок вікна
+
+        // Форматуємо час
+        const startTime = event.start ? new Date(event.start).toTimeString().substring(0, 5) : "-";
+        const endTime = event.end ? new Date(event.end).toTimeString().substring(0, 5) : "";
+        const timeDisplay = endTime ? `${startTime} - ${endTime}` : startTime;
+
+        // --- ВАРІАНТ 1: ДЕДЛАЙН ---
+        if (event.extendedProps.type === 'task_deadline') {
+            modalHeader.textContent = "Деталі дедлайну"; // Змінюємо назву вікна
+
+            const description = event.extendedProps.description || "Опис відсутній";
+
+            content.innerHTML = `
+                <h3 style="margin-top:0; color:white; font-size: 1.4rem; border-bottom: 1px solid #333; padding-bottom: 10px;">
+                    ${event.title}
+                </h3>
+
+                <div style="margin-top: 15px; font-size: 1rem; display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <span style="color: #888;">⏳ Термін:</span>
+                        <span style="color: #ef4444; font-weight: bold; margin-left: 8px;">${timeDisplay}</span>
+                    </div>
+
+                    <div>
+                        <span style="color: #888;">📌 Тип:</span>
+                        <span style="color: #fff; margin-left: 8px;">Дедлайн</span>
+                    </div>
+
+                    <div>
+                        <div style="color: #888; margin-bottom: 5px;">📝 Опис завдання:</div>
+                        <div style="color: #ddd; background: #222; padding: 10px; border-radius: 8px; font-size: 0.95rem; line-height: 1.5;">
+                            ${description}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        // --- ВАРІАНТ 2: ЗВИЧАЙНА ПАРА ---
+        } else {
+            modalHeader.textContent = "Деталі пари"; // Повертаємо стандартну назву
+
+            let rawLocation = event.extendedProps.location || "";
+            let type = event.extendedProps.type || "Подія";
+
+            let teacher = "Не вказано";
+            let room = rawLocation;
+
+            // Логіка розділення (якщо це пара з університету)
+            if (rawLocation.includes(',')) {
+                const parts = rawLocation.split(',');
+                if (parts.length >= 2) {
+                    teacher = parts[0].trim();
+                    let rest = parts.slice(1).join(',').trim();
+                    room = rest.replace(new RegExp(type, 'i'), '').replace(/,$/, '').trim();
+                }
+            }
+
+            // Якщо це власна подія
+            if (event.extendedProps.is_custom) {
+                teacher = "-";
+                room = rawLocation || "Локація не вказана";
+            }
+
+            content.innerHTML = `
+                <h3 style="margin-top:0; color:white; font-size: 1.4rem; border-bottom: 1px solid #333; padding-bottom: 10px;">${event.title}</h3>
+
+                <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; margin-top: 15px; font-size: 1rem;">
+                    <div style="color: #888;">⏳ Час:</div>
+                    <div style="color: #fff; font-weight: bold;">${timeDisplay}</div>
+
+                    <div style="color: #888;">📌 Тип:</div>
+                    <div style="color: #fff;">${type}</div>
+
+                    <div style="color: #888;">🎓 Викладач:</div>
+                    <div style="color: #60a5fa;">${teacher}</div>
+
+                    <div style="color: #888;">📍 Аудиторія:</div>
+                    <div style="color: #fff;">${room}</div>
+                </div>
+            `;
+        }
+
+        // Показуємо модальне вікно
+        document.getElementById('modal-event-info').classList.remove('hidden');
+    };
+
+    // --- Інші функції (Modals, API) ---
+
+    const openDayDetailModal = (date, events) => {
+        const modalTitle = dayDetailModal.querySelector('#day-detail-title');
+        const modalList = dayDetailModal.querySelector('#day-detail-list');
+
+        modalTitle.textContent = `Події на ${date.toLocaleDateString('uk-UA')}`;
+        modalList.innerHTML = '';
+
+        events.forEach(event => {
+            modalList.appendChild(createEventElement(event));
+        });
+
+        dayDetailModal.classList.remove('hidden');
+    };
+
+    const openEventModal = (event = null) => {
+        const form = document.getElementById('event-form');
+        form.reset();
+
+        if (event) {
+            // Редагування
+            document.getElementById('modal-title').textContent = 'Редагувати подію';
+            document.getElementById('ev-title').value = event.title;
+            document.getElementById('ev-date').value = event.start.split('T')[0];
+            document.getElementById('ev-start').value = event.start.split('T')[1].substring(0,5);
+            // Якщо є кінець - ставимо, якщо ні - порожньо
+            const endVal = event.end ? event.end.split('T')[1].substring(0,5) : "";
+            document.getElementById('ev-end').value = endVal;
+        } else {
+            // Створення
+            editingEventId = null;
+            document.getElementById('modal-title').textContent = 'Нова подія';
+            document.getElementById('ev-date').value = editingEventDate;
+        }
+        eventModal.classList.remove('hidden');
+    };
+
+    const saveEvent = async (e) => {
+        e.preventDefault();
+        const eventData = {
+            id: editingEventId,
+            title: document.getElementById('ev-title').value,
+            date: document.getElementById('ev-date').value,
+            start_time: document.getElementById('ev-start').value,
+            end_time: document.getElementById('ev-end').value,
+            group_name: window.CURRENT_USER_GROUP,
+            type: 'other' // За замовчуванням
+        };
+
+        try {
+            const response = await fetch("/api/event", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(eventData),
+            });
+            if (response.ok) {
+                eventModal.classList.add('hidden');
+                fetchSchedule();
+            }
+        } catch (error) {
+            console.error("Save error:", error);
+        }
+    };
+
+    const deleteEvent = async () => {
+        if (!editingEventId || !confirm("Видалити подію?")) return;
+        try {
+            const response = await fetch(`/api/event/${editingEventId}`, { method: "DELETE" });
+            if (response.ok) {
+                fetchSchedule();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    // --- Listeners Setup ---
+    const setupEventListeners = () => {
+        prevMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); });
+        nextMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); });
+        todayBtn.addEventListener('click', () => { currentDate = new Date(); renderCalendar(); });
+
+        subgroup1Btn.addEventListener('click', () => switchSubgroup(1));
+        subgroup2Btn.addEventListener('click', () => switchSubgroup(2));
+
+        document.addEventListener('click', hideContextMenus);
+
+        // Modals closing
+        dayDetailModal.querySelector('#day-detail-close').addEventListener('click', () => dayDetailModal.classList.add('hidden'));
+        eventModal.querySelector('#cancel-ev').addEventListener('click', () => eventModal.classList.add('hidden'));
+
+        // Closing Info Modal
+        document.getElementById('close-info-btn').addEventListener('click', () => infoModal.classList.add('hidden'));
+        infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.classList.add('hidden'); });
+
+        // Save Form
+        document.getElementById('event-form').addEventListener('submit', saveEvent);
+
+        // Context Menu Actions
+        document.getElementById('add-event-btn').addEventListener('click', () => openEventModal());
+
+        document.getElementById('edit-event-btn').addEventListener('click', () => {
+             // Беремо подію зі збереженої змінної
+            if(currentContextMenuEvent) {
+                 editingEventId = currentContextMenuEvent.id.replace('custom_', '');
+                 openEventModal(currentContextMenuEvent);
+            }
+        });
+
+        document.getElementById('delete-event-btn').addEventListener('click', () => {
+             if(currentContextMenuEvent) {
+                 editingEventId = currentContextMenuEvent.id.replace('custom_', '');
+                 deleteEvent();
+             }
+        });
+
+        // View Details Btn
+        document.getElementById('view-details-btn').addEventListener('click', () => {
+            if (currentContextMenuEvent) {
+                showEventInfo(currentContextMenuEvent);
+            }
+        });
+    };
+
+    const switchSubgroup = (subgroup) => {
+        if (currentSubgroup === subgroup) return;
+        currentSubgroup = subgroup;
+        updateSubgroupUI();
+        fetchSchedule();
+    };
+
+    const updateSubgroupUI = () => {
+        if (currentSubgroup == 1) {
+            subgroup1Btn.classList.add('active');
+            subgroup2Btn.classList.remove('active');
+        } else {
+            subgroup1Btn.classList.remove('active');
+            subgroup2Btn.classList.add('active');
+        }
+    };
+
+    setupEventListeners();
+    fetchSchedule();
+});

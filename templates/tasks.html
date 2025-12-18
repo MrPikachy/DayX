@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Задачі - Day X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    {% include 'base.html' %}
+
+    <main class="container">
+        <div class="tasks-container">
+            <div class="tasks-header">
+                <h1>Мої Задачі</h1>
+                <button id="btn-create-task" class="btn btn-primary">+ Створити задачу</button>
+            </div>
+
+            <div class="tasks-tabs">
+                <button class="tab-btn active" data-tab="personal">Особисті</button>
+                {% for team in user_teams %}
+                    <button class="tab-btn" data-tab="team-{{ team['id'] }}">{{ team['name'] }}</button>
+                {% endfor %}
+            </div>
+
+            <!-- Personal tasks kanban -->
+            <div id="personal" class="tab-content active">
+                <div class="kanban-board">
+                    <div class="kanban-column">
+                        <h3>Активні</h3>
+                        <div class="tasks-list" id="active-personal"></div>
+                    </div>
+                    <div class="kanban-column">
+                        <h3>Виконані</h3>
+                        <div class="tasks-list" id="completed-personal"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Team tasks kanban -->
+            {% for team in user_teams %}
+            <div id="team-{{ team['id'] }}" class="tab-content">
+                <div class="kanban-board">
+                    <div class="kanban-column">
+                        <h3>Активні</h3>
+                        <div class="tasks-list" id="active-team-{{ team['id'] }}"></div>
+                    </div>
+                    <div class="kanban-column">
+                        <h3>Виконані</h3>
+                        <div class="tasks-list" id="completed-team-{{ team['id'] }}"></div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </main>
+
+    <!-- Create/Edit task modal -->
+    <div id="task-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h2 id="modal-title">Створити задачу</h2>
+
+            <form id="task-form">
+                <div class="form-group">
+                    <label>Назва задачи</label>
+                    <input type="text" id="task-title" class="form-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Опис</label>
+                    <textarea id="task-description" class="form-input" rows="4"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Дедлайн</label>
+                    <input type="datetime-local" id="task-deadline" class="form-input">
+                </div>
+
+                <!-- Team and member selection - hidden by default, shown for team tasks -->
+                <div id="team-select-group" class="form-group" style="display:none;">
+                    <label>Команда</label>
+                    <select id="task-team" class="form-input">
+                        {% for team in user_teams %}
+                            <option value="{{ team['id'] }}">{{ team['name'] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="assign-to-group" class="form-group" style="display:none;">
+                    <label>Призначити користувачам</label>
+                    <button type="button" id="btn-select-members" class="btn btn-secondary" style="width: 100%;">
+                        Виберіть користувачів
+                    </button>
+                    <div id="selected-members" class="selected-members" style="margin-top: 10px;"></div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="btn-close-modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Task context menu -->
+    <div id="task-context-menu" class="context-menu hidden">
+        <button class="context-menu-item" data-action="toggle-complete">✓ Позначити завершеною</button>
+        <button class="context-menu-item" data-action="edit">✎ Редагувати</button>
+        <button class="context-menu-item danger" data-action="delete">🗑 Видалити</button>
+    </div>
+
+    <!-- Member selection modal -->
+    <!-- Improved member selection modal with better styling -->
+    <div id="member-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="width: 400px;">
+            <button class="modal-close">&times;</button>
+            <h2>Виберіть користувачів</h2>
+            <div id="members-list" class="members-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px; min-height: 50px;"></div>
+            <div class="modal-actions" style="margin-top: 15px;">
+                <button type="button" class="btn btn-secondary" id="btn-close-member-modal">Готово</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='tasks.js') }}"></script>
+</body>
+</html>
